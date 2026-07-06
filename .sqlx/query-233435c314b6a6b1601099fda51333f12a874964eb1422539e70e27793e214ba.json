@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT v.id, v.patient_id, p.name AS \"patient_name!\", v.visit_id,\n               v.vaccine_name, v.date_given, v.batch_no, v.next_due_date,\n               v.created_at, v.updated_at\n        FROM vaccinations v\n        JOIN patients p ON p.id = v.patient_id\n        WHERE v.deleted_at IS NULL AND v.updated_at > $1 ORDER BY v.updated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "patient_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "patient_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "patient_name!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "visit_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "visit_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "vaccine_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "vaccine_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "date_given",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "date_given"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "batch_no",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "batch_no"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "next_due_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "next_due_date"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "vaccinations",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "233435c314b6a6b1601099fda51333f12a874964eb1422539e70e27793e214ba"
+}

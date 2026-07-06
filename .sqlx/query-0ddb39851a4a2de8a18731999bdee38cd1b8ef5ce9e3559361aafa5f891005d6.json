@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id AS visit_id, visit_date, weight_kg AS \"weight_kg!\"\n        FROM visits\n        WHERE patient_id = $1 AND weight_kg IS NOT NULL AND deleted_at IS NULL\n        ORDER BY visit_date\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "visit_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "visit_date",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "visit_date"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "weight_kg!",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "weight_kg"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0ddb39851a4a2de8a18731999bdee38cd1b8ef5ce9e3559361aafa5f891005d6"
+}

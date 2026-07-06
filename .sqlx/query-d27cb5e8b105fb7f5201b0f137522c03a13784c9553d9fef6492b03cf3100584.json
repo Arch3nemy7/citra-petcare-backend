@@ -1,0 +1,130 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT i.id, i.name, i.category AS \"category: InventoryCategory\", i.unit,\n               i.min_stock, i.expiry_date, COALESCE(m.stock, 0) AS \"current_stock!\",\n               i.created_at, i.updated_at\n        FROM inventory_items i\n        LEFT JOIN (\n            SELECT item_id,\n                   SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock\n            FROM stock_movements\n            WHERE deleted_at IS NULL\n            GROUP BY item_id\n        ) m ON m.item_id = i.id\n        WHERE i.id = $1 AND i.deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "category: InventoryCategory",
+        "type_info": {
+          "Custom": {
+            "name": "inventory_category",
+            "kind": {
+              "Enum": [
+                "DRUG",
+                "VACCINE",
+                "SUPPLY"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "unit",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "unit"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "min_stock",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "min_stock"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "expiry_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "expiry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "current_stock!",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null,
+      false,
+      false
+    ]
+  },
+  "hash": "d27cb5e8b105fb7f5201b0f137522c03a13784c9553d9fef6492b03cf3100584"
+}

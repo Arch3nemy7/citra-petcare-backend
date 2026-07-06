@@ -1,0 +1,4 @@
+# stock rustfmt — stable options only so `cargo fmt --check` works on stable
+edition = "2024"
+newline_style = "Unix"
+use_field_init_shorthand = true

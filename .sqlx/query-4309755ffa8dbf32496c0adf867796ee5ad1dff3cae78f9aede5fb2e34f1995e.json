@@ -1,0 +1,99 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id AS item_id, name, category AS \"category: InventoryCategory\", unit,\n               expiry_date AS \"expiry_date!\"\n        FROM inventory_items\n        WHERE deleted_at IS NULL\n          AND expiry_date IS NOT NULL\n          AND expiry_date <= $1\n          AND ($2::inventory_category IS NULL OR category = $2)\n        ORDER BY expiry_date\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "category: InventoryCategory",
+        "type_info": {
+          "Custom": {
+            "name": "inventory_category",
+            "kind": {
+              "Enum": [
+                "DRUG",
+                "VACCINE",
+                "SUPPLY"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "unit",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "unit"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "expiry_date!",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "expiry_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        {
+          "Custom": {
+            "name": "inventory_category",
+            "kind": {
+              "Enum": [
+                "DRUG",
+                "VACCINE",
+                "SUPPLY"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "4309755ffa8dbf32496c0adf867796ee5ad1dff3cae78f9aede5fb2e34f1995e"
+}

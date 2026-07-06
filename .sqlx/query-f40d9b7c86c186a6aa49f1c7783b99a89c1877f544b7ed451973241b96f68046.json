@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE visit_attachments SET deleted_at = now() WHERE visit_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f40d9b7c86c186a6aa49f1c7783b99a89c1877f544b7ed451973241b96f68046"
+}

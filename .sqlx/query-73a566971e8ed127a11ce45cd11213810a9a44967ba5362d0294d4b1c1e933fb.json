@@ -1,0 +1,208 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT v.id, v.patient_id, p.name AS \"patient_name!\", v.vet_id,\n               u.name AS \"vet_name!\", v.visit_date, v.complaint, v.temperature_c,\n               v.weight_kg, v.exam_notes, v.diagnosis, v.treatment,\n               v.prescription, v.follow_up_date, v.created_at, v.updated_at\n        FROM visits v\n        JOIN patients p ON p.id = v.patient_id\n        JOIN users u ON u.id = v.vet_id\n        WHERE v.id = $1 AND v.deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "patient_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "patient_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "patient_name!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "vet_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "vet_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "vet_name!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "visit_date",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "visit_date"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "complaint",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "complaint"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "temperature_c",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "temperature_c"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "weight_kg",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "weight_kg"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "exam_notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "exam_notes"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "diagnosis",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "diagnosis"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "treatment",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "treatment"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "prescription",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "prescription"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "follow_up_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "follow_up_date"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "73a566971e8ed127a11ce45cd11213810a9a44967ba5362d0294d4b1c1e933fb"
+}

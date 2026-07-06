@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO inventory_items (id, name, category, unit, min_stock, expiry_date)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        {
+          "Custom": {
+            "name": "inventory_category",
+            "kind": {
+              "Enum": [
+                "DRUG",
+                "VACCINE",
+                "SUPPLY"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Float8",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5857e7918367d51e01f65051a12980b761d5bc35bfc5d87e9caeeb061b019ab6"
+}

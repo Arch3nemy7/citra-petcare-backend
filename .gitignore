@@ -1,0 +1,13 @@
+# build artifacts
+/target
+
+# local environment — commit .env.example instead
+.env
+
+# local dev file storage root (Storage driver "local")
+/storage-data
+
+# editor noise
+.idea/
+.vscode/
+*.swp

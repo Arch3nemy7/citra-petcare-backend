@@ -1,0 +1,8 @@
+target
+.git
+.github
+.env
+storage-data
+deploy
+README.md
+*.md

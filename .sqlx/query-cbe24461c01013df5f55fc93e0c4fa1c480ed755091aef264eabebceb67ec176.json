@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO vaccinations\n            (id, patient_id, visit_id, vaccine_name, date_given, batch_no, next_due_date)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        ON CONFLICT (id) DO UPDATE SET\n            patient_id = EXCLUDED.patient_id,\n            visit_id = EXCLUDED.visit_id,\n            vaccine_name = EXCLUDED.vaccine_name,\n            date_given = EXCLUDED.date_given,\n            batch_no = EXCLUDED.batch_no,\n            next_due_date = EXCLUDED.next_due_date,\n            deleted_at = NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Date",
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cbe24461c01013df5f55fc93e0c4fa1c480ed755091aef264eabebceb67ec176"
+}

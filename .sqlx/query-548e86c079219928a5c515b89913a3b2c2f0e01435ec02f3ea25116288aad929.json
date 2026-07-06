@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO patients\n            (id, owner_id, name, species, breed, sex, sterilized, birth_date,\n             color_markings, microchip_no, photo_key, allergies, alert_notes, status)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\n        ON CONFLICT (id) DO UPDATE SET\n            owner_id = EXCLUDED.owner_id,\n            name = EXCLUDED.name,\n            species = EXCLUDED.species,\n            breed = EXCLUDED.breed,\n            sex = EXCLUDED.sex,\n            sterilized = EXCLUDED.sterilized,\n            birth_date = EXCLUDED.birth_date,\n            color_markings = EXCLUDED.color_markings,\n            microchip_no = EXCLUDED.microchip_no,\n            photo_key = EXCLUDED.photo_key,\n            allergies = EXCLUDED.allergies,\n            alert_notes = EXCLUDED.alert_notes,\n            status = EXCLUDED.status,\n            deleted_at = NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        {
+          "Custom": {
+            "name": "species",
+            "kind": {
+              "Enum": [
+                "CAT",
+                "DOG",
+                "RABBIT",
+                "BIRD",
+                "HAMSTER",
+                "REPTILE",
+                "OTHER"
+              ]
+            }
+          }
+        },
+        "Text",
+        {
+          "Custom": {
+            "name": "sex",
+            "kind": {
+              "Enum": [
+                "MALE",
+                "FEMALE",
+                "UNKNOWN"
+              ]
+            }
+          }
+        },
+        "Bool",
+        "Date",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        {
+          "Custom": {
+            "name": "patient_status",
+            "kind": {
+              "Enum": [
+                "ACTIVE",
+                "DECEASED",
+                "INACTIVE"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "548e86c079219928a5c515b89913a3b2c2f0e01435ec02f3ea25116288aad929"
+}

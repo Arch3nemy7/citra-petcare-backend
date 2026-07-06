@@ -1,0 +1,92 @@
+name: citra-petcare
+
+services:
+  api:
+    build: .
+    image: citra-petcare:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: production
+      LOG_FORMAT: json
+      HTTP_PORT: "8080"
+      DATABASE_URL: postgres://petcare:${POSTGRES_PASSWORD:-petcare}@db:5432/petcare
+      AUTO_MIGRATE: "true"
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      # storage: local volume by default; set STORAGE_DRIVER=s3 + the S3_*
+      # vars in .env to use OCI Object Storage
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_ROOT: /data/storage
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      # notifications: log driver by default; set NOTIFIER_DRIVER=fcm and
+      # mount the service-account JSON to enable push
+      NOTIFIER_DRIVER: ${NOTIFIER_DRIVER:-log}
+      FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
+      FCM_TOPIC: ${FCM_TOPIC:-clinic}
+      SCHEDULER_ENABLED: "true"
+    volumes:
+      - storage-data:/data/storage
+      # - ./firebase-service-account.json:/etc/citra/firebase-service-account.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: petcare
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-petcare}
+      POSTGRES_DB: petcare
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petcare -d petcare"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # not exposed to the host — only the api container reaches it
+
+  # ---- optional observability stack: `docker compose --profile observability up -d` ----
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: [observability]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: [observability]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  db-data:
+  storage-data:
+  prometheus-data:
+  grafana-data:

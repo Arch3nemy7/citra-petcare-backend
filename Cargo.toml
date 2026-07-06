@@ -1,0 +1,109 @@
+[package]
+name = "citra-petcare"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+description = "Citra PetCare — internal veterinary clinic record system API"
+license = "MIT"
+publish = false
+
+[dependencies]
+# --- web framework & middleware stack ---
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = [
+    "trace",
+    "request-id",
+    "cors",
+    "catch-panic",
+    "set-header",
+    "sensitive-headers",
+] }
+tower_governor = "0.8"
+
+# --- database ---
+sqlx = { version = "0.9", features = [
+    "runtime-tokio",
+    "postgres",
+    "uuid",
+    "chrono",
+    "migrate",
+    "derive",
+    "macros",
+    "json",
+] }
+
+# --- serialization, config & validation ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+envy = "0.4"
+validator = { version = "0.20", features = ["derive"] }
+
+# --- auth & crypto ---
+# aws_lc_rs backend: a single explicit crypto feature means HS256 works
+# without a process-level rustls CryptoProvider (tests build the router
+# without main()), and it reuses aws-lc-rs already in the tree via the AWS
+# SDK instead of pulling the pure-Rust stack (whose `rsa` crate carries the
+# unfixed RUSTSEC-2023-0071 Marvin-attack advisory).
+jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
+argon2 = { version = "0.5", features = ["std"] }
+rand = "0.9"
+hex = "0.4"
+sha2 = "0.10"
+hmac = "0.12"
+# Pin a single process-wide rustls crypto provider (ring). Several dependencies
+# (reqwest, gcp_auth, aws-sdk) pull rustls with different default providers;
+# installing one explicitly in main() avoids the "no default provider" panic.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+
+# --- ids & time ---
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+
+# --- errors ---
+thiserror = "2"
+anyhow = "1" # by convention used only in main() and tests
+
+# --- OpenAPI ---
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
+
+# --- observability ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+
+# --- file storage (S3-compatible: OCI Object Storage) ---
+# default features off: they drag in a legacy rustls 0.21 stack with open
+# RUSTSEC advisories. We build the client config by hand (static credentials,
+# custom endpoint), so only the modern https client + tokio rt are needed.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+
+# --- notifications (FCM HTTP v1) ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+gcp_auth = "0.12"
+
+# --- scheduler ---
+tokio-cron-scheduler = "0.15"
+
+# --- misc ---
+async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
+dotenvy = "0.15"
+tokio-util = { version = "0.7", features = ["io"] }
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[lints.rust]
+unsafe_code = "forbid"

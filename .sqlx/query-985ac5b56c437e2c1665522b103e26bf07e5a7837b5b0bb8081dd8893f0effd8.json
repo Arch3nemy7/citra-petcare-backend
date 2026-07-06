@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, deleted_at AS \"deleted_at!\" FROM visits\n           WHERE deleted_at IS NOT NULL AND updated_at > $1 ORDER BY updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "deleted_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "visits",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "985ac5b56c437e2c1665522b103e26bf07e5a7837b5b0bb8081dd8893f0effd8"
+}

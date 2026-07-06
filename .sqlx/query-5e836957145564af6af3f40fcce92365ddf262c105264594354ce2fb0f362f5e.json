@@ -1,0 +1,257 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.owner_id, o.name AS \"owner_name!\", p.name,\n               p.species AS \"species: Species\", p.breed, p.sex AS \"sex: Sex\",\n               p.sterilized, p.birth_date, p.color_markings, p.microchip_no,\n               p.photo_key, p.allergies, p.alert_notes,\n               p.status AS \"status: PatientStatus\", p.created_at, p.updated_at\n        FROM patients p\n        JOIN owners o ON o.id = p.owner_id\n        WHERE p.id = $1 AND p.deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "owner_name!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "owners",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "species: Species",
+        "type_info": {
+          "Custom": {
+            "name": "species",
+            "kind": {
+              "Enum": [
+                "CAT",
+                "DOG",
+                "RABBIT",
+                "BIRD",
+                "HAMSTER",
+                "REPTILE",
+                "OTHER"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "species"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "breed",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "breed"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "sex: Sex",
+        "type_info": {
+          "Custom": {
+            "name": "sex",
+            "kind": {
+              "Enum": [
+                "MALE",
+                "FEMALE",
+                "UNKNOWN"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "sex"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "sterilized",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "sterilized"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "birth_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "birth_date"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "color_markings",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "color_markings"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "microchip_no",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "microchip_no"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "photo_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "photo_key"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "allergies",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "allergies"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "alert_notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "alert_notes"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "status: PatientStatus",
+        "type_info": {
+          "Custom": {
+            "name": "patient_status",
+            "kind": {
+              "Enum": [
+                "ACTIVE",
+                "DECEASED",
+                "INACTIVE"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "patients",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5e836957145564af6af3f40fcce92365ddf262c105264594354ce2fb0f362f5e"
+}
