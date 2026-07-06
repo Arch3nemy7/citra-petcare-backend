@@ -223,7 +223,7 @@ git clone <this repo> /opt/citra-petcare && cd /opt/citra-petcare
 cat > .env <<'EOF'
 JWT_SECRET=<openssl rand -hex 32>
 POSTGRES_PASSWORD=<openssl rand -hex 16>
-PUBLIC_BASE_URL=https://api.petcare.holo.my.id
+PUBLIC_BASE_URL=https://be-petcare.holo.my.id
 CORS_ALLOWED_ORIGINS=https://app.petcare.holo.my.id
 STORAGE_DRIVER=s3
 S3_ENDPOINT=https://<namespace>.compat.objectstorage.<region>.oraclecloud.com
@@ -245,14 +245,29 @@ curl -s http://127.0.0.1:8080/readyz
 
 ### 3. DNS + TLS + proxy
 
-1. Cloudflare DNS: `A api.petcare.holo.my.id → <VPS IP>`, proxied; SSL mode
+The production host fronts all containers with
+[`nginxproxy/nginx-proxy`](https://github.com/nginx-proxy/nginx-proxy) on
+ports 80/443, so the API registers itself via the `VIRTUAL_HOST` /
+`VIRTUAL_PORT` / `CERT_NAME` environment variables already set in
+`docker-compose.yml`, and joins the external `proxy-network`. TLS uses the
+shared Cloudflare Origin wildcard cert for `*.holo.my.id` in
+`nginx-proxy`'s certs directory; Cloudflare proxies the domain. Per-vhost
+nginx overrides (body size, forwarded headers, and a
+`location = /metrics { return 404; }` block) live in
+`vhost.d/be-petcare.holo.my.id` of the nginx-proxy stack.
+
+To deploy on a host **without** nginx-proxy instead: remove `VIRTUAL_HOST`,
+`CERT_NAME` and the `proxy-network` entries from `docker-compose.yml`, then
+use the standalone vhost:
+
+1. Cloudflare DNS: `A be-petcare.holo.my.id → <VPS IP>`, proxied; SSL mode
    **Full (strict)**.
-2. `sudo cp deploy/nginx/api.petcare.holo.my.id.conf /etc/nginx/sites-available/`
+2. `sudo cp deploy/nginx/be-petcare.holo.my.id.conf /etc/nginx/sites-available/`
    and symlink into `sites-enabled/`.
-3. `sudo certbot --nginx -d api.petcare.holo.my.id`
+3. `sudo certbot --nginx -d be-petcare.holo.my.id`
 4. `sudo nginx -t && sudo systemctl reload nginx`
 
-The vhost restores real client IPs from `CF-Connecting-IP` (feeding the
+That vhost restores real client IPs from `CF-Connecting-IP` (feeding the
 API's per-IP rate limiter), blocks `/metrics`, and proxies everything else
 to `127.0.0.1:8080`.
 

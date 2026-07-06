@@ -6,8 +6,21 @@ services:
     image: citra-petcare:latest
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # loopback only — public traffic comes in through the nginx-proxy
+      # container (VIRTUAL_HOST below) behind Cloudflare
+      - "127.0.0.1:8080:8080"
+    networks:
+      - default
+      - proxy-network
     environment:
+      # nginxproxy/nginx-proxy discovery: routes https://be-petcare.holo.my.id
+      # to this container over proxy-network
+      VIRTUAL_HOST: be-petcare.holo.my.id
+      VIRTUAL_PORT: "8080"
+      # the existing cert files are all copies of one Cloudflare Origin
+      # wildcard cert for *.holo.my.id, so reference one instead of copying
+      # the key pair again (nginx-proxy CERT_NAME feature)
+      CERT_NAME: be-shelia.holo.my.id
       APP_ENV: production
       LOG_FORMAT: json
       HTTP_PORT: "8080"
@@ -84,6 +97,11 @@ services:
       - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
+
+networks:
+  # pre-existing network owned by the host's nginx-proxy stack
+  proxy-network:
+    external: true
 
 volumes:
   db-data:
