@@ -292,10 +292,46 @@ Restore: `gunzip -c petcare-….sql.gz | docker compose exec -T db psql -U petca
 
 ### 5. Updating
 
+Merging (or pushing) to `main` deploys automatically — see CD below. The
+manual path still works and is the fallback if Actions is down:
+
 ```bash
-cd /opt/citra-petcare && git pull
+cd /home/Documents/citra-petcare && git pull
 docker compose up -d --build              # AUTO_MIGRATE applies new migrations
 ```
+
+### 6. CD — how deploys happen
+
+The `deploy` job in `.github/workflows/ci.yml` runs on a **self-hosted
+GitHub Actions runner** installed on the VPS (`~/actions-runner`, systemd
+service `actions.runner.Arch3nemy7-citra-petcare-backend.oracle-vps`,
+labels `self-hosted, Linux, ARM64`). On every push to `main`, after the
+hosted CI jobs (fmt/clippy/tests, cargo-deny, x86 image build) are green,
+the runner:
+
+1. fast-forwards the live checkout at `/home/Documents/citra-petcare`
+   (local uncommitted edits to tracked files abort the deploy — commit or
+   stash them);
+2. builds the image natively on arm64 (reusing the host's Docker layer
+   cache, so dependency-only rebuilds are rare);
+3. pushes `ghcr.io/arch3nemy7/citra-petcare-backend:<sha>` and `:latest`
+   to GitHub Container Registry — every deployed image stays addressable
+   for rollback;
+4. retags the sha as local `citra-petcare:latest` and runs
+   `docker compose up -d --no-build --wait` (the server's `.env` is never
+   touched by CI);
+5. smoke-tests `readyz` on loopback and `healthz` through the public
+   domain, printing container logs on failure.
+
+**Rollback** — point the local tag at any previous sha and restart:
+
+```bash
+docker tag ghcr.io/arch3nemy7/citra-petcare-backend:<old-sha> citra-petcare:latest
+cd /home/Documents/citra-petcare && docker compose up -d --no-build
+```
+
+**Runner maintenance**: `cd ~/actions-runner && sudo ./svc.sh status`
+(also `stop`/`start`); re-register with `config.sh` if the repo moves.
 
 ---
 

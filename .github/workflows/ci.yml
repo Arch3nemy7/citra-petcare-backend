@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -81,3 +81,63 @@ jobs:
           tags: citra-petcare:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ---- CD: runs on the self-hosted runner on the production VPS ----
+  # Builds the image natively (arm64, reusing the host's docker layer cache),
+  # keeps a rollback history in GHCR, then restarts the compose stack.
+  # The server's .env is never touched by CI.
+  deploy:
+    name: deploy to VPS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, deny, docker]
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 60
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/arch3nemy7/citra-petcare-backend
+      DEPLOY_PATH: /home/Documents/citra-petcare
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # fail fast: the live checkout must fast-forward cleanly (uncommitted
+      # local edits to tracked files on the server block the deploy)
+      - name: sync live checkout
+        run: |
+          git -C "$DEPLOY_PATH" fetch origin
+          git -C "$DEPLOY_PATH" merge --ff-only origin/main
+
+      - name: log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: build image (native arm64)
+        run: docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+
+      - name: push to GHCR
+        run: |
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: restart compose stack
+        run: |
+          # compose keeps using the citra-petcare:latest tag, so manual
+          # `docker compose up -d --build` on the server still works
+          docker tag "$IMAGE:${{ github.sha }}" citra-petcare:latest
+          docker compose -f "$DEPLOY_PATH/docker-compose.yml" --project-directory "$DEPLOY_PATH" up -d --no-build --wait
+
+      - name: smoke test
+        run: |
+          if ! curl -fsS --retry 12 --retry-delay 5 --retry-all-errors http://127.0.0.1:8080/readyz; then
+            echo "readyz failed; recent api logs:"
+            docker compose -f "$DEPLOY_PATH/docker-compose.yml" --project-directory "$DEPLOY_PATH" logs api --tail 50
+            exit 1
+          fi
+          curl -fsS https://be-petcare.holo.my.id/healthz
+
+      - name: prune dangling images
+        run: docker image prune -f
