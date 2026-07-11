@@ -23,7 +23,7 @@ pub struct Appointment {
     pub id: Uuid,
     pub patient_id: Uuid,
     pub patient_name: String,
-    pub owner_name: String,
+    pub owner_name: Option<String>,
     pub scheduled_at: DateTime<Utc>,
     pub reason: String,
     pub status: AppointmentStatus,

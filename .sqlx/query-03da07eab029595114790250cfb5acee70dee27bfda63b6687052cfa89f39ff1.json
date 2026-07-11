@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT lot_no, expiry_date AS \"expiry_date!\", qty\n        FROM stock_movements\n        WHERE item_id = $1 AND deleted_at IS NULL\n          AND type = 'IN' AND expiry_date IS NOT NULL\n        ORDER BY expiry_date, created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lot_no",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "lot_no"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "expiry_date!",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "expiry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "qty",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "qty"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "03da07eab029595114790250cfb5acee70dee27bfda63b6687052cfa89f39ff1"
+}

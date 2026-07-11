@@ -369,7 +369,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         p_mochi,
         None,
         "Tricat (F3)",
-        today - Duration::days(355),
+        Some(today - Duration::days(355)),
         Some("TC-2412-A"),
         Some(today + Duration::days(10)),
     )
@@ -380,7 +380,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         p_bruno,
         None,
         "Rabies (Rabisin)",
-        today - Duration::days(363),
+        Some(today - Duration::days(363)),
         Some("RB-2501-11"),
         Some(today + Duration::days(2)),
     )
@@ -391,7 +391,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         p_bruno,
         Some(v_bruno_vax),
         "DHPP (Vanguard Plus 5)",
-        today - Duration::days(60),
+        Some(today - Duration::days(60)),
         Some("VG-2504-03"),
         Some(today + Duration::days(305)),
     )
@@ -402,7 +402,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         p_oyen,
         None,
         "Tricat (F3)",
-        today - Duration::days(400),
+        Some(today - Duration::days(400)),
         Some("TC-2406-B"),
         Some(today - Duration::days(35)),
     )
@@ -413,9 +413,22 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         p_milo,
         None,
         "Rabies (Rabisin)",
-        today - Duration::days(200),
+        Some(today - Duration::days(200)),
         Some("RB-2412-07"),
         Some(today + Duration::days(165)),
+    )
+    .await?;
+    // Due-only record ("vaksin tanpa tanggal"): the owner's vaccine card says
+    // a rabies booster was due 12 days ago, but no dose was ever given here.
+    insert_vaccination(
+        &mut tx,
+        Uuid::now_v7(),
+        p_mochi,
+        None,
+        "Rabies (Rabisin)",
+        None,
+        None,
+        Some(today - Duration::days(12)),
     )
     .await?;
 
@@ -530,7 +543,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
     .await?;
 
     // stock: amox 12-1-4=7, melox 6-2=4, rabisin 10-6=4 (below min 10!),
-    // felocell 15-3=12, spuit 100-15-2=83, nacl 24-6=18
+    // felocell 15+5-3=17 (two lots for the FEFO batch list), spuit
+    // 100-15-2=83, nacl 24-6=18
     insert_movement(
         &mut tx,
         i_amox,
@@ -539,6 +553,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         90,
         Some("Pembelian PT Sanbe Farma"),
         None,
+        Some(today + Duration::days(45)),
+        Some("AMX-2504"),
         now,
     )
     .await?;
@@ -550,6 +566,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         2,
         Some("Terpakai kunjungan Mochi"),
         Some(v_mochi),
+        None,
+        None,
         now,
     )
     .await?;
@@ -560,6 +578,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         4.0,
         30,
         Some("Pemakaian rutin"),
+        None,
+        None,
         None,
         now,
     )
@@ -572,6 +592,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         120,
         Some("Pembelian PT Medion"),
         None,
+        Some(today + Duration::days(20)),
+        Some("MLX-2503"),
         now,
     )
     .await?;
@@ -583,6 +605,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         7,
         Some("Terapi sprain Bruno"),
         Some(v_bruno_leg),
+        None,
+        None,
         now,
     )
     .await?;
@@ -594,6 +618,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         150,
         Some("Pembelian distributor vaksin"),
         None,
+        Some(today + Duration::days(180)),
+        Some("RB-2501-11"),
         now,
     )
     .await?;
@@ -604,6 +630,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         6.0,
         20,
         Some("Program vaksinasi rabies"),
+        None,
+        None,
         None,
         now,
     )
@@ -616,6 +644,21 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         150,
         Some("Pembelian distributor vaksin"),
         None,
+        Some(today + Duration::days(240)),
+        Some("FC-2502"),
+        now,
+    )
+    .await?;
+    insert_movement(
+        &mut tx,
+        i_felocell,
+        MovementType::In,
+        5.0,
+        30,
+        Some("Pembelian distributor vaksin"),
+        None,
+        Some(today + Duration::days(400)),
+        Some("FC-2506"),
         now,
     )
     .await?;
@@ -626,6 +669,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         3.0,
         40,
         Some("Vaksinasi kucing"),
+        None,
+        None,
         None,
         now,
     )
@@ -638,6 +683,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         60,
         Some("Pembelian alat habis pakai"),
         None,
+        None,
+        None,
         now,
     )
     .await?;
@@ -648,6 +695,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         15.0,
         14,
         Some("Pemakaian rutin"),
+        None,
+        None,
         None,
         now,
     )
@@ -660,6 +709,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         5,
         Some("Stok opname: 2 pcs rusak"),
         None,
+        None,
+        None,
         now,
     )
     .await?;
@@ -671,6 +722,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         90,
         Some("Pembelian PT Widatra"),
         None,
+        Some(today + Duration::days(300)),
+        Some("NC-2412"),
         now,
     )
     .await?;
@@ -681,6 +734,8 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         6.0,
         10,
         Some("Pemakaian rutin"),
+        None,
+        None,
         None,
         now,
     )
@@ -693,7 +748,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         owners = 5,
         patients = 7,
         visits = 6,
-        vaccinations = 5,
+        vaccinations = 6,
         appointments = 4,
         inventory_items = 6,
         "seed complete"
@@ -834,7 +889,7 @@ async fn insert_vaccination(
     patient_id: Uuid,
     visit_id: Option<Uuid>,
     vaccine_name: &str,
-    date_given: NaiveDate,
+    date_given: Option<NaiveDate>,
     batch_no: Option<&str>,
     next_due_date: Option<NaiveDate>,
 ) -> Result<(), AppError> {
@@ -917,12 +972,15 @@ async fn insert_movement(
     days_ago: i64,
     reason: Option<&str>,
     visit_id: Option<Uuid>,
+    expiry_date: Option<NaiveDate>,
+    lot_no: Option<&str>,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), AppError> {
     sqlx::query!(
         r#"
-        INSERT INTO stock_movements (id, item_id, type, qty, reason, visit_id, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO stock_movements
+            (id, item_id, type, qty, reason, visit_id, expiry_date, lot_no, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         "#,
         Uuid::now_v7(),
         item_id,
@@ -930,6 +988,8 @@ async fn insert_movement(
         qty,
         reason,
         visit_id,
+        expiry_date,
+        lot_no,
         now - Duration::days(days_ago)
     )
     .execute(conn)

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT p.id, p.owner_id, o.name AS \"owner_name!\", p.name,\n               p.species AS \"species: Species\", p.breed, p.sex AS \"sex: Sex\",\n               p.sterilized, p.birth_date, p.color_markings, p.microchip_no,\n               p.photo_key, p.allergies, p.alert_notes,\n               p.status AS \"status: PatientStatus\", p.created_at, p.updated_at\n        FROM patients p\n        JOIN owners o ON o.id = p.owner_id\n        WHERE p.id = $1 AND p.deleted_at IS NULL\n        ",
+  "query": "\n        SELECT p.id, p.owner_id, o.name AS \"owner_name?\", p.name,\n               p.species AS \"species: Species\", p.breed, p.sex AS \"sex: Sex\",\n               p.sterilized, p.birth_date, p.color_markings, p.microchip_no,\n               p.photo_key, p.allergies, p.alert_notes,\n               p.status AS \"status: PatientStatus\", p.created_at, p.updated_at\n        FROM patients p\n        LEFT JOIN owners o ON o.id = p.owner_id\n        WHERE p.id = $1 AND p.deleted_at IS NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "ordinal": 2,
-        "name": "owner_name!",
+        "name": "owner_name?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -235,8 +235,8 @@
     },
     "nullable": [
       false,
-      false,
-      false,
+      true,
+      true,
       false,
       false,
       true,
@@ -253,5 +253,5 @@
       false
     ]
   },
-  "hash": "5e836957145564af6af3f40fcce92365ddf262c105264594354ce2fb0f362f5e"
+  "hash": "349f91eabb449ea1e1d146255ca32390f4e9a225e6e5ebe8114d99a8ef259aae"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT a.id, a.patient_id, p.name AS \"patient_name!\", o.name AS \"owner_name!\",\n               a.scheduled_at, a.reason, a.status AS \"status: AppointmentStatus\",\n               a.notes, a.created_at, a.updated_at\n        FROM appointments a\n        JOIN patients p ON p.id = a.patient_id\n        JOIN owners o ON o.id = p.owner_id\n        WHERE a.deleted_at IS NULL AND a.updated_at > $1 ORDER BY a.updated_at\n        ",
+  "query": "\n        SELECT v.id, v.patient_id, p.name AS \"patient_name!\", v.visit_id,\n               v.vaccine_name, v.date_given, v.batch_no, v.next_due_date,\n               v.created_at, v.updated_at\n        FROM vaccinations v\n        JOIN patients p ON p.id = v.patient_id\n        WHERE v.deleted_at IS NULL\n          AND v.patient_id = $1\n          AND ($2::uuid IS NULL OR\n               (COALESCE(v.date_given, 'infinity'::date), v.id) <\n               (SELECT COALESCE(date_given, 'infinity'::date), id\n                FROM vaccinations WHERE id = $2))\n        ORDER BY COALESCE(v.date_given, 'infinity'::date) DESC, v.id DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Uuid",
         "origin": {
           "Table": {
-            "table": "appointments",
+            "table": "vaccinations",
             "name": "id"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Uuid",
         "origin": {
           "Table": {
-            "table": "appointments",
+            "table": "vaccinations",
             "name": "patient_id"
           }
         }
@@ -38,68 +38,56 @@
       },
       {
         "ordinal": 3,
-        "name": "owner_name!",
-        "type_info": "Text",
+        "name": "visit_id",
+        "type_info": "Uuid",
         "origin": {
           "Table": {
-            "table": "owners",
-            "name": "name"
+            "table": "vaccinations",
+            "name": "visit_id"
           }
         }
       },
       {
         "ordinal": 4,
-        "name": "scheduled_at",
-        "type_info": "Timestamptz",
+        "name": "vaccine_name",
+        "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "appointments",
-            "name": "scheduled_at"
+            "table": "vaccinations",
+            "name": "vaccine_name"
           }
         }
       },
       {
         "ordinal": 5,
-        "name": "reason",
-        "type_info": "Text",
+        "name": "date_given",
+        "type_info": "Date",
         "origin": {
           "Table": {
-            "table": "appointments",
-            "name": "reason"
+            "table": "vaccinations",
+            "name": "date_given"
           }
         }
       },
       {
         "ordinal": 6,
-        "name": "status: AppointmentStatus",
-        "type_info": {
-          "Custom": {
-            "name": "appointment_status",
-            "kind": {
-              "Enum": [
-                "SCHEDULED",
-                "DONE",
-                "CANCELLED",
-                "NO_SHOW"
-              ]
-            }
-          }
-        },
+        "name": "batch_no",
+        "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "appointments",
-            "name": "status"
+            "table": "vaccinations",
+            "name": "batch_no"
           }
         }
       },
       {
         "ordinal": 7,
-        "name": "notes",
-        "type_info": "Text",
+        "name": "next_due_date",
+        "type_info": "Date",
         "origin": {
           "Table": {
-            "table": "appointments",
-            "name": "notes"
+            "table": "vaccinations",
+            "name": "next_due_date"
           }
         }
       },
@@ -109,7 +97,7 @@
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
-            "table": "appointments",
+            "table": "vaccinations",
             "name": "created_at"
           }
         }
@@ -120,7 +108,7 @@
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
-            "table": "appointments",
+            "table": "vaccinations",
             "name": "updated_at"
           }
         }
@@ -128,21 +116,23 @@
     ],
     "parameters": {
       "Left": [
-        "Timestamptz"
+        "Uuid",
+        "Uuid",
+        "Int8"
       ]
     },
     "nullable": [
       false,
       false,
       false,
+      true,
       false,
-      false,
-      false,
-      false,
+      true,
+      true,
       true,
       false,
       false
     ]
   },
-  "hash": "691b9efffc9bc85f36b23b8753ee58f645c6af9c045b2857ee024f3655bbf7e8"
+  "hash": "64c4b4c63ddcd1613f2f3871a5fcdaf08fa7b663aef30118ad581e3de48f049d"
 }

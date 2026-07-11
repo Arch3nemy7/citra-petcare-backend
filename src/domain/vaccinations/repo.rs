@@ -6,7 +6,8 @@ use super::models::Vaccination;
 use crate::error::AppError;
 
 /// Ordered by administration date (newest first) with a composite keyset
-/// cursor, same pattern as visits.
+/// cursor, same pattern as visits. Due-only rows (NULL date_given) sort as
+/// 'infinity' — before every dated row — so open reminders lead the list.
 pub async fn list_for_patient(
     db: &PgPool,
     patient_id: Uuid,
@@ -24,8 +25,10 @@ pub async fn list_for_patient(
         WHERE v.deleted_at IS NULL
           AND v.patient_id = $1
           AND ($2::uuid IS NULL OR
-               (v.date_given, v.id) < (SELECT date_given, id FROM vaccinations WHERE id = $2))
-        ORDER BY v.date_given DESC, v.id DESC
+               (COALESCE(v.date_given, 'infinity'::date), v.id) <
+               (SELECT COALESCE(date_given, 'infinity'::date), id
+                FROM vaccinations WHERE id = $2))
+        ORDER BY COALESCE(v.date_given, 'infinity'::date) DESC, v.id DESC
         LIMIT $3
         "#,
         patient_id,
@@ -62,7 +65,7 @@ pub async fn upsert(
     patient_id: Uuid,
     visit_id: Option<Uuid>,
     vaccine_name: &str,
-    date_given: NaiveDate,
+    date_given: Option<NaiveDate>,
     batch_no: Option<&str>,
     next_due_date: Option<NaiveDate>,
 ) -> Result<(), AppError> {

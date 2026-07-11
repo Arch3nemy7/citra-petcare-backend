@@ -9,9 +9,10 @@ use crate::error::AppError;
 ///
 /// `DISTINCT ON` keeps only the most recent row per (patient, vaccine) — an
 /// older dose with a passed due date is superseded once a newer dose exists.
-/// The due-date filter must wrap that in a subquery so it applies *after*
-/// picking the latest row. sqlx cannot infer nullability through a subquery,
-/// hence the `!` overrides.
+/// Due-only records (NULL date_given) sort last, so any administered dose of
+/// the same vaccine supersedes its placeholder. The due-date filter must wrap
+/// that in a subquery so it applies *after* picking the latest row. sqlx
+/// cannot infer nullability through a subquery, hence the `!`/`?` overrides.
 pub async fn vaccinations_due(
     db: &PgPool,
     cutoff: NaiveDate,
@@ -22,10 +23,10 @@ pub async fn vaccinations_due(
         SELECT latest.vaccination_id AS "vaccination_id!",
                latest.patient_id AS "patient_id!",
                latest.patient_name AS "patient_name!",
-               latest.owner_name AS "owner_name!",
-               latest.owner_phone AS "owner_phone!",
+               latest.owner_name AS "owner_name?",
+               latest.owner_phone AS "owner_phone?",
                latest.vaccine_name AS "vaccine_name!",
-               latest.date_given AS "date_given!",
+               latest.date_given AS "date_given?",
                latest.next_due_date AS "next_due_date!"
         FROM (
             SELECT DISTINCT ON (v.patient_id, v.vaccine_name)
@@ -35,9 +36,9 @@ pub async fn vaccinations_due(
             FROM vaccinations v
             JOIN patients p ON p.id = v.patient_id
                 AND p.deleted_at IS NULL AND p.status = 'ACTIVE'
-            JOIN owners o ON o.id = p.owner_id AND o.deleted_at IS NULL
+            LEFT JOIN owners o ON o.id = p.owner_id AND o.deleted_at IS NULL
             WHERE v.deleted_at IS NULL
-            ORDER BY v.patient_id, v.vaccine_name, v.date_given DESC
+            ORDER BY v.patient_id, v.vaccine_name, v.date_given DESC NULLS LAST
         ) latest
         WHERE latest.next_due_date IS NOT NULL AND latest.next_due_date <= $1
         ORDER BY latest.next_due_date

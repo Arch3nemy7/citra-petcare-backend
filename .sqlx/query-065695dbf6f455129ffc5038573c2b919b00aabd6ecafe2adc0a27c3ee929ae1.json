@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT a.id, a.patient_id, p.name AS \"patient_name!\", o.name AS \"owner_name!\",\n               a.scheduled_at, a.reason, a.status AS \"status: AppointmentStatus\",\n               a.notes, a.created_at, a.updated_at\n        FROM appointments a\n        JOIN patients p ON p.id = a.patient_id\n        JOIN owners o ON o.id = p.owner_id\n        WHERE a.id = $1 AND a.deleted_at IS NULL\n        ",
+  "query": "\n        SELECT a.id, a.patient_id, p.name AS \"patient_name!\", o.name AS \"owner_name?\",\n               a.scheduled_at, a.reason, a.status AS \"status: AppointmentStatus\",\n               a.notes, a.created_at, a.updated_at\n        FROM appointments a\n        JOIN patients p ON p.id = a.patient_id\n        LEFT JOIN owners o ON o.id = p.owner_id\n        WHERE a.deleted_at IS NULL AND a.updated_at > $1 ORDER BY a.updated_at\n        ",
   "describe": {
     "columns": [
       {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "owner_name!",
+        "name": "owner_name?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -128,7 +128,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -144,5 +144,5 @@
       false
     ]
   },
-  "hash": "344fd22b3d56bea6e7660f58f55d7e9f898d231ca543d0fab74aeeda68552cd9"
+  "hash": "065695dbf6f455129ffc5038573c2b919b00aabd6ecafe2adc0a27c3ee929ae1"
 }

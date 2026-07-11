@@ -41,12 +41,14 @@ pub enum PatientStatus {
 }
 
 /// An animal patient. `owner_name` is denormalized from the owners table on
-/// every read — each pet is shown with its owner throughout the app.
+/// every read — each pet is shown with its owner throughout the app. Both are
+/// None for detached pets ("Tanpa pemilik"): registration without owner data,
+/// or the owner record was deleted.
 #[derive(Debug, Clone)]
 pub struct Patient {
     pub id: Uuid,
-    pub owner_id: Uuid,
-    pub owner_name: String,
+    pub owner_id: Option<Uuid>,
+    pub owner_name: Option<String>,
     pub name: String,
     pub species: Species,
     pub breed: Option<String>,

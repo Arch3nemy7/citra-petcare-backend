@@ -9,7 +9,7 @@ use super::models::Vaccination;
 /// Body for POST /patients/{id}/vaccinations — the patient comes from the path.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[validate(schema(function = "validate_due_after_given"))]
+#[validate(schema(function = "validate_create_dates"))]
 pub struct CreateVaccinationRequest {
     /// Client-generated UUIDv7 (optional).
     pub id: Option<Uuid>,
@@ -17,7 +17,9 @@ pub struct CreateVaccinationRequest {
     #[validate(length(min = 1, max = 200))]
     #[schema(example = "Rabies (Rabisin)")]
     pub vaccine_name: String,
-    pub date_given: NaiveDate,
+    /// Omit for a due-only record — a dose known to be due (e.g. a booster
+    /// from another clinic's card) without an administration date.
+    pub date_given: Option<NaiveDate>,
     #[validate(length(max = 100))]
     pub batch_no: Option<String>,
     pub next_due_date: Option<NaiveDate>,
@@ -26,36 +28,38 @@ pub struct CreateVaccinationRequest {
 /// Body for PUT /vaccinations/{id} — the full representation, incl. patient.
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
-#[validate(schema(function = "validate_upsert_due_after_given"))]
+#[validate(schema(function = "validate_upsert_dates"))]
 pub struct UpsertVaccinationRequest {
     pub patient_id: Uuid,
     pub visit_id: Option<Uuid>,
     #[validate(length(min = 1, max = 200))]
     pub vaccine_name: String,
-    pub date_given: NaiveDate,
+    pub date_given: Option<NaiveDate>,
     #[validate(length(max = 100))]
     pub batch_no: Option<String>,
     pub next_due_date: Option<NaiveDate>,
 }
 
+/// A record needs at least one date to mean anything, and a due date must
+/// come after the administration date when both are present.
 fn check_dates(
-    date_given: NaiveDate,
+    date_given: Option<NaiveDate>,
     next_due_date: Option<NaiveDate>,
 ) -> Result<(), ValidationError> {
-    if let Some(due) = next_due_date
-        && due <= date_given
-    {
-        return Err(ValidationError::new("next_due_date")
-            .with_message("nextDueDate must be after dateGiven".into()));
+    match (date_given, next_due_date) {
+        (None, None) => Err(ValidationError::new("date_given")
+            .with_message("dateGiven or nextDueDate is required".into())),
+        (Some(given), Some(due)) if due <= given => Err(ValidationError::new("next_due_date")
+            .with_message("nextDueDate must be after dateGiven".into())),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
-fn validate_due_after_given(req: &CreateVaccinationRequest) -> Result<(), ValidationError> {
+fn validate_create_dates(req: &CreateVaccinationRequest) -> Result<(), ValidationError> {
     check_dates(req.date_given, req.next_due_date)
 }
 
-fn validate_upsert_due_after_given(req: &UpsertVaccinationRequest) -> Result<(), ValidationError> {
+fn validate_upsert_dates(req: &UpsertVaccinationRequest) -> Result<(), ValidationError> {
     check_dates(req.date_given, req.next_due_date)
 }
 
@@ -67,7 +71,8 @@ pub struct VaccinationResponse {
     pub patient_name: String,
     pub visit_id: Option<Uuid>,
     pub vaccine_name: String,
-    pub date_given: NaiveDate,
+    /// None for due-only records.
+    pub date_given: Option<NaiveDate>,
     pub batch_no: Option<String>,
     pub next_due_date: Option<NaiveDate>,
     pub created_at: DateTime<Utc>,

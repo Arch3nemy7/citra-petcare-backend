@@ -1,5 +1,5 @@
 //! Patients CRUD: create (incl. client-generated ids), read, upsert, search,
-//! soft delete, owner-delete guard, weight history.
+//! soft delete, owner delete detaching pets, weight history.
 
 mod common;
 
@@ -115,7 +115,7 @@ async fn full_crud_with_client_generated_id_and_soft_delete() {
     .await;
     assert_eq!(body["data"].as_array().unwrap().len(), 1);
 
-    // owner cannot be deleted while a live patient references it
+    // deleting the owner detaches the pet instead of failing
     let (status, body) = request(
         &app.router,
         "DELETE",
@@ -124,7 +124,32 @@ async fn full_crud_with_client_generated_id_and_soft_delete() {
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["detachedPatients"], 1);
+
+    // the pet survives without its owner link ("Tanpa pemilik")
+    let (status, body) = request(
+        &app.router,
+        "GET",
+        &format!("/api/v1/patients/{patient_id}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["ownerId"].is_null(), "{body}");
+    assert!(body["ownerName"].is_null(), "{body}");
+
+    // deleting the owner again → 404 (soft delete is not repeatable)
+    let (status, _) = request(
+        &app.router,
+        "DELETE",
+        &format!("/api/v1/owners/{owner_id}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 
     // soft-delete the patient
     let (status, _) = request(
@@ -137,7 +162,7 @@ async fn full_crud_with_client_generated_id_and_soft_delete() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // now 404s, disappears from lists, and the owner can be deleted
+    // now 404s and disappears from lists
     let (status, body) = request(
         &app.router,
         "GET",
@@ -152,16 +177,6 @@ async fn full_crud_with_client_generated_id_and_soft_delete() {
     let (_, body) = request(&app.router, "GET", "/api/v1/patients", Some(&token), None).await;
     assert_eq!(body["data"].as_array().unwrap().len(), 0);
 
-    let (status, _) = request(
-        &app.router,
-        "DELETE",
-        &format!("/api/v1/owners/{owner_id}"),
-        Some(&token),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-
     // deleting again → 404 (soft delete is not repeatable)
     let (status, _) = request(
         &app.router,
@@ -172,6 +187,63 @@ async fn full_crud_with_client_generated_id_and_soft_delete() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn registers_patients_without_owner_and_due_only_vaccinations() {
+    let (app, token) = spawn_logged_in().await;
+
+    // no ownerId at all — a stray brought in without any owner data
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        "/api/v1/patients",
+        Some(&token),
+        Some(json!({ "name": "Kitty", "species": "CAT" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(body["ownerId"].is_null());
+    assert!(body["ownerName"].is_null());
+    let patient_id = body["id"].as_str().unwrap().to_string();
+
+    // due-only vaccination ("vaksin tanpa tanggal"): no dateGiven, only a due date
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        &format!("/api/v1/patients/{patient_id}/vaccinations"),
+        Some(&token),
+        Some(json!({ "vaccineName": "Tricat booster", "nextDueDate": "2026-06-24" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(body["dateGiven"].is_null());
+    assert_eq!(body["nextDueDate"], "2026-06-24");
+
+    // a record without any date is meaningless → 422
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        &format!("/api/v1/patients/{patient_id}/vaccinations"),
+        Some(&token),
+        Some(json!({ "vaccineName": "Rabies" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // due-only rows lead the patient's vaccination list
+    let (status, body) = request(
+        &app.router,
+        "GET",
+        &format!("/api/v1/patients/{patient_id}/vaccinations"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = body["data"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["vaccineName"], "Tricat booster");
 }
 
 #[tokio::test]

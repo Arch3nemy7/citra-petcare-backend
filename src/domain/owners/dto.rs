@@ -15,9 +15,10 @@ pub struct OwnerRequest {
     pub id: Option<Uuid>,
     #[validate(length(min = 1, max = 200))]
     pub name: String,
+    /// Optional but recommended — vaccination reminders need it.
     #[validate(length(min = 5, max = 32))]
     #[schema(example = "+62812xxxxxx")]
-    pub phone: String,
+    pub phone: Option<String>,
     #[validate(length(min = 5, max = 32))]
     pub alt_phone: Option<String>,
     #[validate(length(max = 500))]
@@ -31,10 +32,12 @@ pub struct OwnerRequest {
 pub struct OwnerResponse {
     pub id: Uuid,
     pub name: String,
-    pub phone: String,
+    pub phone: Option<String>,
     pub alt_phone: Option<String>,
     pub address: Option<String>,
     pub notes: Option<String>,
+    /// Active pets registered under this owner.
+    pub patient_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -48,10 +51,20 @@ impl From<Owner> for OwnerResponse {
             alt_phone: owner.alt_phone,
             address: owner.address,
             notes: owner.notes,
+            patient_count: owner.patient_count,
             created_at: owner.created_at,
             updated_at: owner.updated_at,
         }
     }
+}
+
+/// Result of DELETE /owners/{id}: pets are never cascade-deleted, they are
+/// detached (owner_id → NULL) so their medical history survives.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteOwnerResponse {
+    /// How many active patients lost their owner link.
+    pub detached_patients: u64,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]

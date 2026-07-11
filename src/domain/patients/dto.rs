@@ -12,7 +12,8 @@ use super::models::{Patient, PatientStatus, Sex, Species};
 pub struct PatientRequest {
     /// Client-generated UUIDv7. Optional on POST; ignored on PUT (path wins).
     pub id: Option<Uuid>,
-    pub owner_id: Uuid,
+    /// Omit for a pet without owner data ("Tanpa pemilik").
+    pub owner_id: Option<Uuid>,
     #[validate(length(min = 1, max = 100))]
     pub name: String,
     pub species: Species,
@@ -43,8 +44,9 @@ pub struct PatientRequest {
 #[serde(rename_all = "camelCase")]
 pub struct PatientResponse {
     pub id: Uuid,
-    pub owner_id: Uuid,
-    pub owner_name: String,
+    /// None for detached pets ("Tanpa pemilik").
+    pub owner_id: Option<Uuid>,
+    pub owner_name: Option<String>,
     pub name: String,
     pub species: Species,
     pub breed: Option<String>,

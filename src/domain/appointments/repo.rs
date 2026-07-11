@@ -20,12 +20,12 @@ pub async fn list(
     let rows = sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name!",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE a.deleted_at IS NULL
           AND ($1::timestamptz IS NULL OR a.scheduled_at >= $1)
           AND ($2::timestamptz IS NULL OR a.scheduled_at < $2)
@@ -52,12 +52,12 @@ pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<Appointment>, AppError
     let appointment = sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name!",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE a.id = $1 AND a.deleted_at IS NULL
         "#,
         id

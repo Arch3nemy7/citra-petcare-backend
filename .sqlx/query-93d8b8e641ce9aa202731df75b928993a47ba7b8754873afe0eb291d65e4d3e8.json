@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COALESCE(SUM(CASE\n            WHEN type = 'OUT' THEN qty\n            WHEN type = 'ADJUSTMENT' AND qty < 0 THEN -qty\n            ELSE 0\n        END), 0) AS \"consumed!\"\n        FROM stock_movements\n        WHERE item_id = $1 AND deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "consumed!",
+        "type_info": "Float8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "93d8b8e641ce9aa202731df75b928993a47ba7b8754873afe0eb291d65e4d3e8"
+}

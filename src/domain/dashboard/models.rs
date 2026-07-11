@@ -11,10 +11,13 @@ pub struct VaccinationDue {
     pub vaccination_id: Uuid,
     pub patient_id: Uuid,
     pub patient_name: String,
-    pub owner_name: String,
-    pub owner_phone: String,
+    /// None for detached pets ("Tanpa pemilik").
+    pub owner_name: Option<String>,
+    pub owner_phone: Option<String>,
     pub vaccine_name: String,
-    pub date_given: NaiveDate,
+    /// None for due-only records — a dose that is scheduled/known to be due
+    /// but was never administered here (no date to show).
+    pub date_given: Option<NaiveDate>,
     pub next_due_date: NaiveDate,
 }
 

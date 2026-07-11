@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, item_id, type AS \"movement_type: MovementType\", qty, reason,\n               visit_id, created_at, updated_at\n        FROM stock_movements\n        WHERE item_id = $1 AND deleted_at IS NULL\n          AND ($2::uuid IS NULL OR id < $2)\n        ORDER BY id DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT id, item_id, type AS \"movement_type: MovementType\", qty, reason,\n               visit_id, expiry_date, lot_no, created_at, updated_at\n        FROM stock_movements\n        WHERE deleted_at IS NULL AND updated_at > $1 ORDER BY updated_at\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,28 @@
       },
       {
         "ordinal": 6,
+        "name": "expiry_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "expiry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "lot_no",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "lot_no"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -92,7 +114,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -105,9 +127,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Uuid",
-        "Int8"
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -117,9 +137,11 @@
       false,
       true,
       true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "750958c27f453de23701ccd6a8324887a7dd606464cde2a0b91e8902f3a5cf19"
+  "hash": "6d2c908b1c35930544bb27ea741ec6e6afce27289e7ad104b1565de406ea7312"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT latest.vaccination_id AS \"vaccination_id!\",\n               latest.patient_id AS \"patient_id!\",\n               latest.patient_name AS \"patient_name!\",\n               latest.owner_name AS \"owner_name!\",\n               latest.owner_phone AS \"owner_phone!\",\n               latest.vaccine_name AS \"vaccine_name!\",\n               latest.date_given AS \"date_given!\",\n               latest.next_due_date AS \"next_due_date!\"\n        FROM (\n            SELECT DISTINCT ON (v.patient_id, v.vaccine_name)\n                   v.id AS vaccination_id, v.patient_id, p.name AS patient_name,\n                   o.name AS owner_name, o.phone AS owner_phone,\n                   v.vaccine_name, v.date_given, v.next_due_date\n            FROM vaccinations v\n            JOIN patients p ON p.id = v.patient_id\n                AND p.deleted_at IS NULL AND p.status = 'ACTIVE'\n            JOIN owners o ON o.id = p.owner_id AND o.deleted_at IS NULL\n            WHERE v.deleted_at IS NULL\n            ORDER BY v.patient_id, v.vaccine_name, v.date_given DESC\n        ) latest\n        WHERE latest.next_due_date IS NOT NULL AND latest.next_due_date <= $1\n        ORDER BY latest.next_due_date\n        ",
+  "query": "\n        SELECT latest.vaccination_id AS \"vaccination_id!\",\n               latest.patient_id AS \"patient_id!\",\n               latest.patient_name AS \"patient_name!\",\n               latest.owner_name AS \"owner_name?\",\n               latest.owner_phone AS \"owner_phone?\",\n               latest.vaccine_name AS \"vaccine_name!\",\n               latest.date_given AS \"date_given?\",\n               latest.next_due_date AS \"next_due_date!\"\n        FROM (\n            SELECT DISTINCT ON (v.patient_id, v.vaccine_name)\n                   v.id AS vaccination_id, v.patient_id, p.name AS patient_name,\n                   o.name AS owner_name, o.phone AS owner_phone,\n                   v.vaccine_name, v.date_given, v.next_due_date\n            FROM vaccinations v\n            JOIN patients p ON p.id = v.patient_id\n                AND p.deleted_at IS NULL AND p.status = 'ACTIVE'\n            LEFT JOIN owners o ON o.id = p.owner_id AND o.deleted_at IS NULL\n            WHERE v.deleted_at IS NULL\n            ORDER BY v.patient_id, v.vaccine_name, v.date_given DESC NULLS LAST\n        ) latest\n        WHERE latest.next_due_date IS NOT NULL AND latest.next_due_date <= $1\n        ORDER BY latest.next_due_date\n        ",
   "describe": {
     "columns": [
       {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "owner_name!",
+        "name": "owner_name?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +49,7 @@
       },
       {
         "ordinal": 4,
-        "name": "owner_phone!",
+        "name": "owner_phone?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,7 +71,7 @@
       },
       {
         "ordinal": 6,
-        "name": "date_given!",
+        "name": "date_given?",
         "type_info": "Date",
         "origin": {
           "Table": {
@@ -102,11 +102,11 @@
       false,
       false,
       false,
+      true,
       false,
-      false,
-      false,
+      true,
       true
     ]
   },
-  "hash": "c2dd88be44ffa2c5505a7538b821430f9cdcdfb5d7c3f723bab539379c21a5b7"
+  "hash": "4f9464063ae30b478abc81cb5d1aa9cbea9d53eb25f8248c81ced55b64ee6979"
 }

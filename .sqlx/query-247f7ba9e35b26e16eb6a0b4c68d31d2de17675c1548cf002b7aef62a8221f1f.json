@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name, phone, alt_phone, address, notes, created_at, updated_at\n        FROM owners\n        WHERE deleted_at IS NULL\n          AND ($1::text IS NULL OR name ILIKE '%' || $1 || '%' OR phone ILIKE '%' || $1 || '%')\n          AND ($2::uuid IS NULL OR id < $2)\n        ORDER BY id DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT o.id, o.name, o.phone, o.alt_phone, o.address, o.notes,\n               (SELECT count(*) FROM patients p\n                WHERE p.owner_id = o.id AND p.deleted_at IS NULL) AS \"patient_count!\",\n               o.created_at, o.updated_at\n        FROM owners o WHERE o.deleted_at IS NULL AND o.updated_at > $1 ORDER BY o.updated_at\n        ",
   "describe": {
     "columns": [
       {
@@ -71,6 +71,12 @@
       },
       {
         "ordinal": 6,
+        "name": "patient_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -81,7 +87,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -94,21 +100,20 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Uuid",
-        "Int8"
+        "Timestamptz"
       ]
     },
     "nullable": [
       false,
       false,
-      false,
       true,
       true,
       true,
+      true,
+      null,
       false,
       false
     ]
   },
-  "hash": "fb55a24f2ba25f52cd2068a98775d1da8af0ee8a851ee5b6c5a383c951234cf9"
+  "hash": "247f7ba9e35b26e16eb6a0b4c68d31d2de17675c1548cf002b7aef62a8221f1f"
 }

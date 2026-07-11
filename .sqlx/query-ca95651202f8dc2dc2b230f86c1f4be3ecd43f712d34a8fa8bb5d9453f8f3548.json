@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO owners (id, name, phone, alt_phone, address, notes)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        ON CONFLICT (id) DO UPDATE SET\n            name = EXCLUDED.name,\n            phone = EXCLUDED.phone,\n            alt_phone = EXCLUDED.alt_phone,\n            address = EXCLUDED.address,\n            notes = EXCLUDED.notes,\n            deleted_at = NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ca95651202f8dc2dc2b230f86c1f4be3ecd43f712d34a8fa8bb5d9453f8f3548"
+}

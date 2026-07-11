@@ -11,7 +11,9 @@ pub struct Vaccination {
     /// Visit during which the vaccine was administered, when recorded.
     pub visit_id: Option<Uuid>,
     pub vaccine_name: String,
-    pub date_given: NaiveDate,
+    /// None for due-only records: the dose is known to be due (see
+    /// `next_due_date`) but was never administered at this clinic.
+    pub date_given: Option<NaiveDate>,
     pub batch_no: Option<String>,
     pub next_due_date: Option<NaiveDate>,
     pub created_at: DateTime<Utc>,

@@ -5,7 +5,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
-use super::dto::{ListOwnersParams, OwnerRequest, OwnerResponse};
+use super::dto::{DeleteOwnerResponse, ListOwnersParams, OwnerRequest, OwnerResponse};
 use super::service;
 use crate::domain::auth::AuthUser;
 use crate::error::AppError;
@@ -112,17 +112,17 @@ pub async fn upsert_owner(
     Ok(Json(owner.into()))
 }
 
-/// Soft-delete an owner. Fails with 409 while the owner still has patients.
+/// Soft-delete an owner. Their pets are detached (owner_id → NULL), never
+/// deleted — the response reports how many.
 #[utoipa::path(
     delete,
     path = "/api/v1/owners/{id}",
     tag = "owners",
     params(("id" = Uuid, Path, description = "Owner id")),
     responses(
-        (status = 204, description = "Deleted"),
+        (status = 200, description = "Deleted", body = DeleteOwnerResponse),
         (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "Unknown owner", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 409, description = "Owner still has patients", body = ProblemDetails, content_type = "application/problem+json"),
     ),
     security(("bearerAuth" = []))
 )]
@@ -130,7 +130,7 @@ pub async fn delete_owner(
     State(state): State<AppState>,
     _user: AuthUser,
     ApiPath(id): ApiPath<Uuid>,
-) -> Result<StatusCode, AppError> {
-    service::delete(&state.db, id).await?;
-    Ok(StatusCode::NO_CONTENT)
+) -> Result<Json<DeleteOwnerResponse>, AppError> {
+    let detached_patients = service::delete(&state.db, id).await?;
+    Ok(Json(DeleteOwnerResponse { detached_patients }))
 }

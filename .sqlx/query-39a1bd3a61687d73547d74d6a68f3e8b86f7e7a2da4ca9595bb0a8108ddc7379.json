@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT a.id, a.patient_id, p.name AS \"patient_name!\", o.name AS \"owner_name!\",\n               a.scheduled_at, a.reason, a.status AS \"status: AppointmentStatus\",\n               a.notes, a.created_at, a.updated_at\n        FROM appointments a\n        JOIN patients p ON p.id = a.patient_id\n        JOIN owners o ON o.id = p.owner_id\n        WHERE a.deleted_at IS NULL\n          AND ($1::timestamptz IS NULL OR a.scheduled_at >= $1)\n          AND ($2::timestamptz IS NULL OR a.scheduled_at < $2)\n          AND ($3::appointment_status IS NULL OR a.status = $3)\n          AND ($4::uuid IS NULL OR a.patient_id = $4)\n          AND ($5::uuid IS NULL OR\n               (a.scheduled_at, a.id) > (SELECT scheduled_at, id FROM appointments WHERE id = $5))\n        ORDER BY a.scheduled_at, a.id\n        LIMIT $6\n        ",
+  "query": "\n        SELECT a.id, a.patient_id, p.name AS \"patient_name!\", o.name AS \"owner_name?\",\n               a.scheduled_at, a.reason, a.status AS \"status: AppointmentStatus\",\n               a.notes, a.created_at, a.updated_at\n        FROM appointments a\n        JOIN patients p ON p.id = a.patient_id\n        LEFT JOIN owners o ON o.id = p.owner_id\n        WHERE a.id = $1 AND a.deleted_at IS NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "owner_name!",
+        "name": "owner_name?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -128,31 +128,14 @@
     ],
     "parameters": {
       "Left": [
-        "Timestamptz",
-        "Timestamptz",
-        {
-          "Custom": {
-            "name": "appointment_status",
-            "kind": {
-              "Enum": [
-                "SCHEDULED",
-                "DONE",
-                "CANCELLED",
-                "NO_SHOW"
-              ]
-            }
-          }
-        },
-        "Uuid",
-        "Uuid",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
       false,
       false,
       false,
-      false,
+      true,
       false,
       false,
       false,
@@ -161,5 +144,5 @@
       false
     ]
   },
-  "hash": "a36ec80fc32cf1ac1a57111cf72b899383f58297ef1a9e1c1ea35d36ddca1e12"
+  "hash": "39a1bd3a61687d73547d74d6a68f3e8b86f7e7a2da4ca9595bb0a8108ddc7379"
 }

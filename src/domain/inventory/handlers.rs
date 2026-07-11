@@ -6,8 +6,8 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 
 use super::dto::{
-    InventoryItemRequest, InventoryItemResponse, ListItemsParams, MovementRequest,
-    MovementResponse, RecordedMovementResponse,
+    InventoryItemDetailResponse, InventoryItemRequest, InventoryItemResponse, ListItemsParams,
+    MovementRequest, MovementResponse, RecordedMovementResponse,
 };
 use super::service;
 use crate::domain::auth::AuthUser;
@@ -83,7 +83,7 @@ pub async fn create_item(
     tag = "inventory",
     params(("id" = Uuid, Path, description = "Item id")),
     responses(
-        (status = 200, description = "Item", body = InventoryItemResponse),
+        (status = 200, description = "Item with its remaining batches", body = InventoryItemDetailResponse),
         (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "Unknown item", body = ProblemDetails, content_type = "application/problem+json"),
     ),
@@ -93,9 +93,12 @@ pub async fn get_item(
     State(state): State<AppState>,
     _user: AuthUser,
     ApiPath(id): ApiPath<Uuid>,
-) -> Result<Json<InventoryItemResponse>, AppError> {
-    let item = service::get(&state.db, id).await?;
-    Ok(Json(item.into()))
+) -> Result<Json<InventoryItemDetailResponse>, AppError> {
+    let (item, batches) = service::get_detail(&state.db, id).await?;
+    Ok(Json(InventoryItemDetailResponse {
+        item: item.into(),
+        batches: batches.into_iter().map(Into::into).collect(),
+    }))
 }
 
 /// Idempotent upsert (create-or-replace) with a client-generated id.

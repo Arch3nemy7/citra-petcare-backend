@@ -5,8 +5,9 @@ use super::dto::PatientRequest;
 use super::models::{Patient, PatientStatus, Sex, Species};
 use crate::error::AppError;
 
-// Every read joins owners for the denormalized `owner_name`; the `!` marker
-// in the queries tells sqlx an inner-joined column can never be NULL.
+// Every read LEFT JOINs owners for the denormalized `owner_name` — the join
+// column is nullable because pets may be detached ("Tanpa pemilik"). The `?`
+// marker tells sqlx the joined name may be NULL even though owners.name isn't.
 
 pub async fn list(
     db: &PgPool,
@@ -18,13 +19,13 @@ pub async fn list(
     let rows = sqlx::query_as!(
         Patient,
         r#"
-        SELECT p.id, p.owner_id, o.name AS "owner_name!", p.name,
+        SELECT p.id, p.owner_id, o.name AS "owner_name?", p.name,
                p.species AS "species: Species", p.breed, p.sex AS "sex: Sex",
                p.sterilized, p.birth_date, p.color_markings, p.microchip_no,
                p.photo_key, p.allergies, p.alert_notes,
                p.status AS "status: PatientStatus", p.created_at, p.updated_at
         FROM patients p
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE p.deleted_at IS NULL
           AND ($1::text IS NULL
                OR p.name ILIKE '%' || $1 || '%'
@@ -49,13 +50,13 @@ pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<Patient>, AppError> {
     let patient = sqlx::query_as!(
         Patient,
         r#"
-        SELECT p.id, p.owner_id, o.name AS "owner_name!", p.name,
+        SELECT p.id, p.owner_id, o.name AS "owner_name?", p.name,
                p.species AS "species: Species", p.breed, p.sex AS "sex: Sex",
                p.sterilized, p.birth_date, p.color_markings, p.microchip_no,
                p.photo_key, p.allergies, p.alert_notes,
                p.status AS "status: PatientStatus", p.created_at, p.updated_at
         FROM patients p
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE p.id = $1 AND p.deleted_at IS NULL
         "#,
         id
@@ -145,15 +146,4 @@ pub async fn soft_delete(db: &PgPool, id: Uuid) -> Result<bool, AppError> {
     .execute(db)
     .await?;
     Ok(result.rows_affected() > 0)
-}
-
-/// Used by the owners module to block deleting an owner with live patients.
-pub async fn count_active_for_owner(db: &PgPool, owner_id: Uuid) -> Result<i64, AppError> {
-    let count = sqlx::query_scalar!(
-        r#"SELECT count(*) AS "count!" FROM patients WHERE owner_id = $1 AND deleted_at IS NULL"#,
-        owner_id
-    )
-    .fetch_one(db)
-    .await?;
-    Ok(count)
 }

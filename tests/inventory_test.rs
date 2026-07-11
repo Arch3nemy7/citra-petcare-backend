@@ -1,5 +1,6 @@
 //! Inventory: stock is derived from the movement ledger, OUT movements can
-//! never drive it negative, and sign rules are enforced per movement type.
+//! never drive it negative, sign rules are enforced per movement type, and
+//! expiry-dated stock-ins open batches consumed earliest-expiry-first (FEFO).
 
 mod common;
 
@@ -80,6 +81,75 @@ async fn stock_is_derived_from_movements() {
     // ledger holds all three entries
     let (_, body) = request(&app.router, "GET", &movements_uri, Some(&token), None).await;
     assert_eq!(body["data"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn batches_follow_fefo_and_refresh_the_expiry_badge() {
+    let (app, token) = spawn_logged_in().await;
+    let item_id = create_item(&app.router, &token).await;
+    let movements_uri = format!("/api/v1/inventory/items/{item_id}/movements");
+    let item_uri = format!("/api/v1/inventory/items/{item_id}");
+
+    // two lots: the later-received one expires sooner
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({
+            "type": "IN", "qty": 8,
+            "expiryDate": "2027-01-14", "lotNo": "AMX-B",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["lotNo"], "AMX-B");
+    let (_, _) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({
+            "type": "IN", "qty": 6,
+            "expiryDate": "2026-08-30", "lotNo": "AMX-A",
+        })),
+    )
+    .await;
+
+    // consumption drains the earliest-expiring lot first
+    let (_, _) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "OUT", "qty": 4 })),
+    )
+    .await;
+
+    let (status, body) = request(&app.router, "GET", &item_uri, Some(&token), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["currentStock"], 10.0);
+    // item expiry badge = earliest remaining batch
+    assert_eq!(body["expiryDate"], "2026-08-30");
+    let batches = body["batches"].as_array().unwrap();
+    assert_eq!(batches.len(), 2, "{body}");
+    assert_eq!(batches[0]["lotNo"], "AMX-A");
+    assert_eq!(batches[0]["qtyRemaining"], 2.0);
+    assert_eq!(batches[1]["lotNo"], "AMX-B");
+    assert_eq!(batches[1]["qtyRemaining"], 8.0);
+
+    // draining lot A entirely advances the badge to lot B's expiry
+    let (_, _) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "OUT", "qty": 2 })),
+    )
+    .await;
+    let (_, body) = request(&app.router, "GET", &item_uri, Some(&token), None).await;
+    assert_eq!(body["expiryDate"], "2027-01-14");
+    assert_eq!(body["batches"].as_array().unwrap().len(), 1);
 }
 
 #[tokio::test]

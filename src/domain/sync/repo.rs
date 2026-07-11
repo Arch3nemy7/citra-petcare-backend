@@ -20,8 +20,11 @@ pub async fn owners_changed(db: &PgPool, since: DateTime<Utc>) -> Result<Vec<Own
     Ok(sqlx::query_as!(
         Owner,
         r#"
-        SELECT id, name, phone, alt_phone, address, notes, created_at, updated_at
-        FROM owners WHERE deleted_at IS NULL AND updated_at > $1 ORDER BY updated_at
+        SELECT o.id, o.name, o.phone, o.alt_phone, o.address, o.notes,
+               (SELECT count(*) FROM patients p
+                WHERE p.owner_id = o.id AND p.deleted_at IS NULL) AS "patient_count!",
+               o.created_at, o.updated_at
+        FROM owners o WHERE o.deleted_at IS NULL AND o.updated_at > $1 ORDER BY o.updated_at
         "#,
         since
     )
@@ -47,13 +50,13 @@ pub async fn patients_changed(db: &PgPool, since: DateTime<Utc>) -> Result<Vec<P
     Ok(sqlx::query_as!(
         Patient,
         r#"
-        SELECT p.id, p.owner_id, o.name AS "owner_name!", p.name,
+        SELECT p.id, p.owner_id, o.name AS "owner_name?", p.name,
                p.species AS "species: Species", p.breed, p.sex AS "sex: Sex",
                p.sterilized, p.birth_date, p.color_markings, p.microchip_no,
                p.photo_key, p.allergies, p.alert_notes,
                p.status AS "status: PatientStatus", p.created_at, p.updated_at
         FROM patients p
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE p.deleted_at IS NULL AND p.updated_at > $1 ORDER BY p.updated_at
         "#,
         since
@@ -182,12 +185,12 @@ pub async fn appointments_changed(
     Ok(sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name!",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
-        JOIN owners o ON o.id = p.owner_id
+        LEFT JOIN owners o ON o.id = p.owner_id
         WHERE a.deleted_at IS NULL AND a.updated_at > $1 ORDER BY a.updated_at
         "#,
         since
@@ -218,7 +221,8 @@ pub async fn items_changed(
         InventoryItem,
         r#"
         SELECT i.id, i.name, i.category AS "category: InventoryCategory", i.unit,
-               i.min_stock, i.expiry_date, COALESCE(m.stock, 0) AS "current_stock!",
+               i.min_stock, i.expiry_date, i.photo_keys,
+               COALESCE(m.stock, 0) AS "current_stock!",
                i.created_at, i.updated_at
         FROM inventory_items i
         LEFT JOIN (
@@ -258,7 +262,7 @@ pub async fn movements_changed(
         StockMovement,
         r#"
         SELECT id, item_id, type AS "movement_type: MovementType", qty, reason,
-               visit_id, created_at, updated_at
+               visit_id, expiry_date, lot_no, created_at, updated_at
         FROM stock_movements
         WHERE deleted_at IS NULL AND updated_at > $1 ORDER BY updated_at
         "#,

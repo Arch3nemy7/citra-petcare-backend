@@ -2,7 +2,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::dto::{InventoryItemRequest, MovementRequest};
-use super::models::{InventoryCategory, InventoryItem, MovementType, StockMovement};
+use super::models::{
+    InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement, allocate_batches,
+};
 use super::{InventoryError, repo};
 use crate::error::AppError;
 use crate::http::pagination::Paginated;
@@ -22,6 +24,22 @@ pub async fn get(db: &PgPool, id: Uuid) -> Result<InventoryItem, AppError> {
     repo::find(db, id)
         .await?
         .ok_or(AppError::NotFound("inventory item"))
+}
+
+/// The item plus its remaining batches (FEFO allocation of all consumption
+/// against expiry-dated stock-ins).
+pub async fn get_detail(
+    db: &PgPool,
+    id: Uuid,
+) -> Result<(InventoryItem, Vec<StockBatch>), AppError> {
+    let item = get(db, id).await?;
+    let batch_ins = repo::batch_ins_for(db, id).await?;
+    let batches = if batch_ins.is_empty() {
+        Vec::new()
+    } else {
+        allocate_batches(batch_ins, repo::consumed_total(db, id).await?)
+    };
+    Ok((item, batches))
 }
 
 pub async fn create(db: &PgPool, input: &InventoryItemRequest) -> Result<InventoryItem, AppError> {
@@ -89,6 +107,8 @@ pub async fn record_movement(
         input.qty,
         input.reason.as_deref(),
         input.visit_id,
+        input.expiry_date,
+        input.lot_no.as_deref(),
     )
     .await
 }

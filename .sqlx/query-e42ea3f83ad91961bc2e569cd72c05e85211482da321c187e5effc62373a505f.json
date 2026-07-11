@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT i.id, i.name, i.category AS \"category: InventoryCategory\", i.unit,\n               i.min_stock, i.expiry_date, COALESCE(m.stock, 0) AS \"current_stock!\",\n               i.created_at, i.updated_at\n        FROM inventory_items i\n        LEFT JOIN (\n            SELECT item_id,\n                   SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock\n            FROM stock_movements\n            WHERE deleted_at IS NULL\n            GROUP BY item_id\n        ) m ON m.item_id = i.id\n        WHERE i.deleted_at IS NULL AND i.updated_at > $1 ORDER BY i.updated_at\n        ",
+  "query": "\n        SELECT i.id, i.name, i.category AS \"category: InventoryCategory\", i.unit,\n               i.min_stock, i.expiry_date, i.photo_keys,\n               COALESCE(m.stock, 0) AS \"current_stock!\",\n               i.created_at, i.updated_at\n        FROM inventory_items i\n        LEFT JOIN (\n            SELECT item_id,\n                   SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock\n            FROM stock_movements\n            WHERE deleted_at IS NULL\n            GROUP BY item_id\n        ) m ON m.item_id = i.id\n        WHERE i.id = $1 AND i.deleted_at IS NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -82,12 +82,23 @@
       },
       {
         "ordinal": 6,
+        "name": "photo_keys",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "photo_keys"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "current_stock!",
         "type_info": "Float8",
         "origin": "Expression"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -98,7 +109,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -111,7 +122,7 @@
     ],
     "parameters": {
       "Left": [
-        "Timestamptz"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -121,10 +132,11 @@
       false,
       false,
       true,
+      false,
       null,
       false,
       false
     ]
   },
-  "hash": "d8609130d8fbf32b09840668793191803cef778bded4743bf03d44f41941dea9"
+  "hash": "e42ea3f83ad91961bc2e569cd72c05e85211482da321c187e5effc62373a505f"
 }

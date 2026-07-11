@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO stock_movements (id, item_id, type, qty, reason, visit_id)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING id, item_id, type AS \"movement_type: MovementType\", qty, reason,\n                  visit_id, created_at, updated_at\n        ",
+  "query": "\n        INSERT INTO stock_movements (id, item_id, type, qty, reason, visit_id, expiry_date, lot_no)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING id, item_id, type AS \"movement_type: MovementType\", qty, reason,\n                  visit_id, expiry_date, lot_no, created_at, updated_at\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,28 @@
       },
       {
         "ordinal": 6,
+        "name": "expiry_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "expiry_date"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "lot_no",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "lot_no"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -92,7 +114,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -121,7 +143,9 @@
         },
         "Float8",
         "Text",
-        "Uuid"
+        "Uuid",
+        "Date",
+        "Text"
       ]
     },
     "nullable": [
@@ -131,9 +155,11 @@
       false,
       true,
       true,
+      true,
+      true,
       false,
       false
     ]
   },
-  "hash": "f7f892bc631e889a5ba8c402b51c55ee3060f959d4e16bbd6eea1c82f44add40"
+  "hash": "dce8012c1a4b974c448f5c4b9db5e1289cfc508f35e58dd5de4405bd251c682d"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT p.id, p.owner_id, o.name AS \"owner_name!\", p.name,\n               p.species AS \"species: Species\", p.breed, p.sex AS \"sex: Sex\",\n               p.sterilized, p.birth_date, p.color_markings, p.microchip_no,\n               p.photo_key, p.allergies, p.alert_notes,\n               p.status AS \"status: PatientStatus\", p.created_at, p.updated_at\n        FROM patients p\n        JOIN owners o ON o.id = p.owner_id\n        WHERE p.deleted_at IS NULL\n          AND ($1::text IS NULL\n               OR p.name ILIKE '%' || $1 || '%'\n               OR o.name ILIKE '%' || $1 || '%'\n               OR o.phone ILIKE '%' || $1 || '%')\n          AND ($2::uuid IS NULL OR p.owner_id = $2)\n          AND ($3::uuid IS NULL OR p.id < $3)\n        ORDER BY p.id DESC\n        LIMIT $4\n        ",
+  "query": "\n        SELECT p.id, p.owner_id, o.name AS \"owner_name?\", p.name,\n               p.species AS \"species: Species\", p.breed, p.sex AS \"sex: Sex\",\n               p.sterilized, p.birth_date, p.color_markings, p.microchip_no,\n               p.photo_key, p.allergies, p.alert_notes,\n               p.status AS \"status: PatientStatus\", p.created_at, p.updated_at\n        FROM patients p\n        LEFT JOIN owners o ON o.id = p.owner_id\n        WHERE p.deleted_at IS NULL\n          AND ($1::text IS NULL\n               OR p.name ILIKE '%' || $1 || '%'\n               OR o.name ILIKE '%' || $1 || '%'\n               OR o.phone ILIKE '%' || $1 || '%')\n          AND ($2::uuid IS NULL OR p.owner_id = $2)\n          AND ($3::uuid IS NULL OR p.id < $3)\n        ORDER BY p.id DESC\n        LIMIT $4\n        ",
   "describe": {
     "columns": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "ordinal": 2,
-        "name": "owner_name!",
+        "name": "owner_name?",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -238,7 +238,7 @@
     },
     "nullable": [
       false,
-      false,
+      true,
       false,
       false,
       false,
@@ -256,5 +256,5 @@
       false
     ]
   },
-  "hash": "4c4aecc3b476f9936993e8f2d93a0c5242d8c07f6ab47ad2759844be80641942"
+  "hash": "311c1809296271de053b8b310aa6eba17c0b245393b354d2731897c28f4ffd3a"
 }
