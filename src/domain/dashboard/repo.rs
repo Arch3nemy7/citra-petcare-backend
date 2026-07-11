@@ -3,6 +3,7 @@ use sqlx::PgPool;
 
 use super::models::{ExpiringItem, LowStockItem, VaccinationDue};
 use crate::domain::inventory::models::InventoryCategory;
+use crate::domain::patients::models::Species;
 use crate::error::AppError;
 
 /// Latest vaccination per (patient, vaccine) due on/before `cutoff`.
@@ -23,6 +24,8 @@ pub async fn vaccinations_due(
         SELECT latest.vaccination_id AS "vaccination_id!",
                latest.patient_id AS "patient_id!",
                latest.patient_name AS "patient_name!",
+               latest.patient_species AS "patient_species!: Species",
+               latest.patient_photo_key AS "patient_photo_key?",
                latest.owner_name AS "owner_name?",
                latest.owner_phone AS "owner_phone?",
                latest.vaccine_name AS "vaccine_name!",
@@ -31,6 +34,7 @@ pub async fn vaccinations_due(
         FROM (
             SELECT DISTINCT ON (v.patient_id, v.vaccine_name)
                    v.id AS vaccination_id, v.patient_id, p.name AS patient_name,
+                   p.species AS patient_species, p.photo_key AS patient_photo_key,
                    o.name AS owner_name, o.phone AS owner_phone,
                    v.vaccine_name, v.date_given, v.next_due_date
             FROM vaccinations v

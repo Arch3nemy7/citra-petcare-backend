@@ -63,6 +63,8 @@ pub async fn summary(db: &PgPool) -> Result<DashboardSummaryResponse, AppError> 
                     vaccination_id: v.vaccination_id,
                     patient_id: v.patient_id,
                     patient_name: v.patient_name,
+                    patient_species: v.patient_species,
+                    patient_photo_key: v.patient_photo_key,
                     owner_name: v.owner_name,
                     owner_phone: v.owner_phone,
                     vaccine_name: v.vaccine_name,

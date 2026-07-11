@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use super::dto::AppointmentRequest;
 use super::models::{Appointment, AppointmentStatus};
+use crate::domain::patients::models::Species;
 use crate::error::AppError;
 
 /// Agenda ordering: soonest first (ascending), with a composite
@@ -20,7 +21,9 @@ pub async fn list(
     let rows = sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!",
+               p.species AS "patient_species!: Species",
+               p.photo_key AS "patient_photo_key?", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a
@@ -52,7 +55,9 @@ pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<Appointment>, AppError
     let appointment = sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!",
+               p.species AS "patient_species!: Species",
+               p.photo_key AS "patient_photo_key?", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a

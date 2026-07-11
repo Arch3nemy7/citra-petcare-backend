@@ -185,7 +185,9 @@ pub async fn appointments_changed(
     Ok(sqlx::query_as!(
         Appointment,
         r#"
-        SELECT a.id, a.patient_id, p.name AS "patient_name!", o.name AS "owner_name?",
+        SELECT a.id, a.patient_id, p.name AS "patient_name!",
+               p.species AS "patient_species!: Species",
+               p.photo_key AS "patient_photo_key?", o.name AS "owner_name?",
                a.scheduled_at, a.reason, a.status AS "status: AppointmentStatus",
                a.notes, a.created_at, a.updated_at
         FROM appointments a

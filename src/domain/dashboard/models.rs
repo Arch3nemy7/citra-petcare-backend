@@ -2,6 +2,7 @@ use chrono::NaiveDate;
 use uuid::Uuid;
 
 use crate::domain::inventory::models::InventoryCategory;
+use crate::domain::patients::models::Species;
 
 /// Latest vaccination per (patient, vaccine) whose next dose is due before a
 /// cutoff. Shared by the dashboard (14-day window) and the daily reminder
@@ -11,6 +12,8 @@ pub struct VaccinationDue {
     pub vaccination_id: Uuid,
     pub patient_id: Uuid,
     pub patient_name: String,
+    pub patient_species: Species,
+    pub patient_photo_key: Option<String>,
     /// None for detached pets ("Tanpa pemilik").
     pub owner_name: Option<String>,
     pub owner_phone: Option<String>,

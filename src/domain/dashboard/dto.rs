@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::domain::appointments::dto::AppointmentResponse;
 use crate::domain::inventory::models::InventoryCategory;
+use crate::domain::patients::models::Species;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +29,9 @@ pub struct VaccinationDueResponse {
     pub vaccination_id: Uuid,
     pub patient_id: Uuid,
     pub patient_name: String,
+    /// For the reminder row's pet avatar (species-tinted initial fallback).
+    pub patient_species: Species,
+    pub patient_photo_key: Option<String>,
     /// None for detached pets ("Tanpa pemilik").
     pub owner_name: Option<String>,
     pub owner_phone: Option<String>,
