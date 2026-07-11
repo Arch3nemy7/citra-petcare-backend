@@ -54,9 +54,6 @@ pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Route
         .merge(sync::handlers::router())
         .split_for_parts();
 
-    // dev-only signed upload/download routes for the local storage driver
-    let api = api.merge(storage::handlers::local_router());
-
     // Per-IP rate limiting on business routes only (never health checks).
     // SmartIpKeyExtractor prefers X-Forwarded-For/X-Real-Ip (set by nginx),
     // falling back to the socket address.
@@ -110,8 +107,13 @@ pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Route
     };
 
     // ---- ops routes + swagger ----
+    // The local storage driver's signed upload/download routes sit outside
+    // the rate limiter: they are already authenticated by the HMAC signature
+    // in the URL, and they carry the actual image bytes — a screen full of
+    // photos would otherwise drain the per-IP quota for real API calls.
     let mut app = Router::new()
         .merge(api)
+        .merge(storage::handlers::local_router())
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api_doc))
         .route("/healthz", get(ops::healthz))
         .route("/readyz", get(ops::readyz));

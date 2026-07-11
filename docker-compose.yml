@@ -47,6 +47,10 @@ services:
       FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
       FCM_TOPIC: ${FCM_TOPIC:-clinic}
       SCHEDULER_ENABLED: "true"
+      # a screen of pet photos resolves many presigned URLs at once; the
+      # defaults (10/s, burst 30) were tuned for JSON-only traffic
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-25}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-100}
     volumes:
       - storage-data:/data/storage
       # - ./firebase-service-account.json:/etc/citra/firebase-service-account.json:ro
