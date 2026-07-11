@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO visits\n            (id, patient_id, vet_id, visit_type, visit_date, complaint, temperature_c,\n             weight_kg, exam_notes, diagnosis, treatment, prescription, follow_up_date)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n        ON CONFLICT (id) DO UPDATE SET\n            patient_id = EXCLUDED.patient_id,\n            vet_id = EXCLUDED.vet_id,\n            visit_type = EXCLUDED.visit_type,\n            visit_date = EXCLUDED.visit_date,\n            complaint = EXCLUDED.complaint,\n            temperature_c = EXCLUDED.temperature_c,\n            weight_kg = EXCLUDED.weight_kg,\n            exam_notes = EXCLUDED.exam_notes,\n            diagnosis = EXCLUDED.diagnosis,\n            treatment = EXCLUDED.treatment,\n            prescription = EXCLUDED.prescription,\n            follow_up_date = EXCLUDED.follow_up_date,\n            deleted_at = NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        {
+          "Custom": {
+            "name": "visit_type",
+            "kind": {
+              "Enum": [
+                "PERIKSA",
+                "GROOMING",
+                "VAKSINASI",
+                "STERILISASI"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Text",
+        "Float8",
+        "Float8",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "196ad5189ab34db985a636b1dcb17e509621e4ea1e8068404395ea417ccfffe5"
+}

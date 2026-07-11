@@ -13,7 +13,7 @@ use crate::domain::inventory::models::{
 use crate::domain::owners::models::Owner;
 use crate::domain::patients::models::{Patient, PatientStatus, Sex, Species};
 use crate::domain::vaccinations::models::Vaccination;
-use crate::domain::visits::models::{AttachmentKind, Visit, VisitAttachment};
+use crate::domain::visits::models::{AttachmentKind, Visit, VisitAttachment, VisitType};
 use crate::error::AppError;
 
 pub async fn owners_changed(db: &PgPool, since: DateTime<Utc>) -> Result<Vec<Owner>, AppError> {
@@ -81,7 +81,8 @@ pub async fn visits_changed(db: &PgPool, since: DateTime<Utc>) -> Result<Vec<Vis
         Visit,
         r#"
         SELECT v.id, v.patient_id, p.name AS "patient_name!", v.vet_id,
-               u.name AS "vet_name!", v.visit_date, v.complaint, v.temperature_c,
+               u.name AS "vet_name!", v.visit_type AS "visit_type: VisitType",
+               v.visit_date, v.complaint, v.temperature_c,
                v.weight_kg, v.exam_notes, v.diagnosis, v.treatment,
                v.prescription, v.follow_up_date, v.created_at, v.updated_at
         FROM visits v

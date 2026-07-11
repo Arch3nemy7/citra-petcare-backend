@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.item_id, i.name AS item_name, i.unit, m.qty\n        FROM stock_movements m\n        JOIN inventory_items i ON i.id = m.item_id\n        WHERE m.visit_id = $1 AND m.type = 'OUT' AND m.deleted_at IS NULL\n        ORDER BY m.created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "item_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "item_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "unit",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "inventory_items",
+            "name": "unit"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "qty",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "qty"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "908157e26494e47033eddc10a7cb0573593251728546a4e2979c98d078dece37"
+}

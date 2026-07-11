@@ -3,7 +3,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::dto::VisitRequest;
-use super::models::{AttachmentKind, Visit, VisitAttachment, WeightPoint};
+use super::models::{
+    AttachmentKind, Visit, VisitAttachment, VisitStockUsage, VisitType, WeightPoint,
+};
 use crate::error::AppError;
 
 /// Visits are ordered by clinical time (visit_date), not record-creation
@@ -21,7 +23,8 @@ pub async fn list(
         Visit,
         r#"
         SELECT v.id, v.patient_id, p.name AS "patient_name!", v.vet_id,
-               u.name AS "vet_name!", v.visit_date, v.complaint, v.temperature_c,
+               u.name AS "vet_name!", v.visit_type AS "visit_type: VisitType",
+               v.visit_date, v.complaint, v.temperature_c,
                v.weight_kg, v.exam_notes, v.diagnosis, v.treatment,
                v.prescription, v.follow_up_date, v.created_at, v.updated_at
         FROM visits v
@@ -52,7 +55,8 @@ pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<Visit>, AppError> {
         Visit,
         r#"
         SELECT v.id, v.patient_id, p.name AS "patient_name!", v.vet_id,
-               u.name AS "vet_name!", v.visit_date, v.complaint, v.temperature_c,
+               u.name AS "vet_name!", v.visit_type AS "visit_type: VisitType",
+               v.visit_date, v.complaint, v.temperature_c,
                v.weight_kg, v.exam_notes, v.diagnosis, v.treatment,
                v.prescription, v.follow_up_date, v.created_at, v.updated_at
         FROM visits v
@@ -71,13 +75,14 @@ pub async fn insert(db: &PgPool, id: Uuid, input: &VisitRequest) -> Result<(), A
     sqlx::query!(
         r#"
         INSERT INTO visits
-            (id, patient_id, vet_id, visit_date, complaint, temperature_c, weight_kg,
-             exam_notes, diagnosis, treatment, prescription, follow_up_date)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            (id, patient_id, vet_id, visit_type, visit_date, complaint, temperature_c,
+             weight_kg, exam_notes, diagnosis, treatment, prescription, follow_up_date)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#,
         id,
         input.patient_id,
         input.vet_id,
+        input.visit_type as VisitType,
         input.visit_date,
         input.complaint,
         input.temperature_c,
@@ -97,12 +102,13 @@ pub async fn upsert(db: &PgPool, id: Uuid, input: &VisitRequest) -> Result<(), A
     sqlx::query!(
         r#"
         INSERT INTO visits
-            (id, patient_id, vet_id, visit_date, complaint, temperature_c, weight_kg,
-             exam_notes, diagnosis, treatment, prescription, follow_up_date)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            (id, patient_id, vet_id, visit_type, visit_date, complaint, temperature_c,
+             weight_kg, exam_notes, diagnosis, treatment, prescription, follow_up_date)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT (id) DO UPDATE SET
             patient_id = EXCLUDED.patient_id,
             vet_id = EXCLUDED.vet_id,
+            visit_type = EXCLUDED.visit_type,
             visit_date = EXCLUDED.visit_date,
             complaint = EXCLUDED.complaint,
             temperature_c = EXCLUDED.temperature_c,
@@ -117,6 +123,7 @@ pub async fn upsert(db: &PgPool, id: Uuid, input: &VisitRequest) -> Result<(), A
         id,
         input.patient_id,
         input.vet_id,
+        input.visit_type as VisitType,
         input.visit_date,
         input.complaint,
         input.temperature_c,
@@ -214,6 +221,28 @@ pub async fn soft_delete_attachment(
     .execute(db)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Inventory the visit consumed: OUT movements linked via visit_id, joined
+/// with the item's display fields.
+pub async fn stock_usage_for(
+    db: &PgPool,
+    visit_id: Uuid,
+) -> Result<Vec<VisitStockUsage>, AppError> {
+    let rows = sqlx::query_as!(
+        VisitStockUsage,
+        r#"
+        SELECT m.item_id, i.name AS item_name, i.unit, m.qty
+        FROM stock_movements m
+        JOIN inventory_items i ON i.id = m.item_id
+        WHERE m.visit_id = $1 AND m.type = 'OUT' AND m.deleted_at IS NULL
+        ORDER BY m.created_at
+        "#,
+        visit_id
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
 }
 
 /// Chronological weight series for one patient, from visit measurements.

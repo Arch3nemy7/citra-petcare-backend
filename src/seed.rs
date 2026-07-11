@@ -14,6 +14,7 @@ use crate::domain::auth::password;
 use crate::domain::inventory::models::{InventoryCategory, MovementType};
 use crate::domain::patients::models::{PatientStatus, Sex, Species};
 use crate::domain::users::models::UserRole;
+use crate::domain::visits::models::VisitType;
 use crate::error::AppError;
 
 const DEFAULT_SEED_PASSWORD: &str = "PetCare#2026";
@@ -244,6 +245,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
     let v_bruno_vax = Uuid::now_v7();
     let v_bruno_leg = Uuid::now_v7();
     let v_milo = Uuid::now_v7();
+    let v_milo_groom = Uuid::now_v7();
     let v_oyen = Uuid::now_v7();
     insert_visit(
         &mut tx,
@@ -251,6 +253,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             id: v_mochi,
             patient_id: p_mochi,
             vet_id: u_citra,
+            visit_type: VisitType::Periksa,
             days_ago: 2,
             complaint: "Tidak mau makan 2 hari, muntah 1 kali",
             temperature_c: Some(39.4),
@@ -269,6 +272,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             id: v_bruno_vax,
             patient_id: p_bruno,
             vet_id: u_bagus,
+            visit_type: VisitType::Vaksinasi,
             days_ago: 60,
             complaint: "Vaksinasi tahunan, kondisi sehat",
             temperature_c: Some(38.6),
@@ -287,6 +291,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             id: v_bruno_leg,
             patient_id: p_bruno,
             vet_id: u_bagus,
+            visit_type: VisitType::Periksa,
             days_ago: 7,
             complaint: "Pincang kaki depan kanan setelah bermain",
             temperature_c: Some(38.8),
@@ -305,6 +310,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             id: v_milo,
             patient_id: p_milo,
             vet_id: u_citra,
+            visit_type: VisitType::Periksa,
             days_ago: 30,
             complaint: "Gatal-gatal, sering menggaruk telinga dan perut",
             temperature_c: Some(38.5),
@@ -323,6 +329,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             id: v_oyen,
             patient_id: p_oyen,
             vet_id: u_bagus,
+            visit_type: VisitType::Periksa,
             days_ago: 100,
             complaint: "Luka gigitan di telinga kiri setelah berkelahi",
             temperature_c: Some(39.0),
@@ -330,6 +337,25 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
             exam_notes: Some("Laserasi 1 cm di pinna sinistra"),
             diagnosis: Some("Vulnus laceratum"),
             treatment: Some("Pembersihan luka, salep antibiotik"),
+            prescription: None,
+            follow_up_date: None,
+        },
+    )
+    .await?;
+    insert_visit(
+        &mut tx,
+        VisitSeed {
+            id: v_milo_groom,
+            patient_id: p_milo,
+            vet_id: u_citra,
+            visit_type: VisitType::Grooming,
+            days_ago: 14,
+            complaint: "Full grooming",
+            temperature_c: None,
+            weight_kg: None,
+            exam_notes: Some("Bulu kusut ringan di punggung, kulit sehat"),
+            diagnosis: None,
+            treatment: None,
             prescription: None,
             follow_up_date: None,
         },
@@ -666,7 +692,7 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
         users = 2,
         owners = 5,
         patients = 7,
-        visits = 5,
+        visits = 6,
         vaccinations = 5,
         appointments = 4,
         inventory_items = 6,
@@ -763,6 +789,7 @@ struct VisitSeed {
     id: Uuid,
     patient_id: Uuid,
     vet_id: Uuid,
+    visit_type: VisitType,
     days_ago: i64,
     complaint: &'static str,
     temperature_c: Option<f64>,
@@ -777,13 +804,14 @@ struct VisitSeed {
 async fn insert_visit(conn: &mut PgConnection, v: VisitSeed) -> Result<(), AppError> {
     sqlx::query!(
         r#"
-        INSERT INTO visits (id, patient_id, vet_id, visit_date, complaint, temperature_c,
+        INSERT INTO visits (id, patient_id, vet_id, visit_type, visit_date, complaint, temperature_c,
                             weight_kg, exam_notes, diagnosis, treatment, prescription, follow_up_date)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         "#,
         v.id,
         v.patient_id,
         v.vet_id,
+        v.visit_type as VisitType,
         Utc::now() - Duration::days(v.days_ago),
         v.complaint,
         v.temperature_c,

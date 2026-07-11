@@ -4,7 +4,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-use super::models::{AttachmentKind, Visit, VisitAttachment};
+use super::models::{AttachmentKind, Visit, VisitAttachment, VisitStockUsage, VisitType};
 
 /// Body for both POST (create) and PUT (idempotent upsert).
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -15,6 +15,9 @@ pub struct VisitRequest {
     pub patient_id: Uuid,
     /// The attending vet (a user id).
     pub vet_id: Uuid,
+    /// Defaults to PERIKSA when omitted (kept optional for older clients).
+    #[serde(default)]
+    pub visit_type: VisitType,
     pub visit_date: DateTime<Utc>,
     /// Anamnesis — the owner's account of the problem.
     #[validate(length(min = 1, max = 4000))]
@@ -42,6 +45,7 @@ pub struct VisitResponse {
     pub patient_name: String,
     pub vet_id: Uuid,
     pub vet_name: String,
+    pub visit_type: VisitType,
     pub visit_date: DateTime<Utc>,
     pub complaint: String,
     pub temperature_c: Option<f64>,
@@ -63,6 +67,7 @@ impl From<Visit> for VisitResponse {
             patient_name: v.patient_name,
             vet_id: v.vet_id,
             vet_name: v.vet_name,
+            visit_type: v.visit_type,
             visit_date: v.visit_date,
             complaint: v.complaint,
             temperature_c: v.temperature_c,
@@ -78,13 +83,38 @@ impl From<Visit> for VisitResponse {
     }
 }
 
-/// A visit plus its attachments (returned by GET /visits/{id}).
+/// A visit plus its attachments and the stock it consumed (returned by
+/// GET /visits/{id}).
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VisitDetailResponse {
     #[serde(flatten)]
     pub visit: VisitResponse,
     pub attachments: Vec<VisitAttachmentResponse>,
+    /// Drugs/vaccines deducted from inventory during this visit (OUT
+    /// movements linked via visitId).
+    pub stock_usage: Vec<VisitStockUsageResponse>,
+}
+
+/// One inventory deduction made during the visit.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VisitStockUsageResponse {
+    pub item_id: Uuid,
+    pub item_name: String,
+    pub unit: String,
+    pub qty: f64,
+}
+
+impl From<VisitStockUsage> for VisitStockUsageResponse {
+    fn from(u: VisitStockUsage) -> Self {
+        Self {
+            item_id: u.item_id,
+            item_name: u.item_name,
+            unit: u.unit,
+            qty: u.qty,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]

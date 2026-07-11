@@ -16,6 +16,22 @@ pub enum AttachmentKind {
     Other,
 }
 
+/// What kind of visit was recorded. Grooming visits skip the medical fields
+/// in the app; the other three follow the full anamnesis → exam → diagnosis
+/// flow.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema,
+)]
+#[sqlx(type_name = "visit_type", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum VisitType {
+    #[default]
+    Periksa,
+    Grooming,
+    Vaksinasi,
+    Sterilisasi,
+}
+
 /// A consultation/examination record. Patient and vet names are denormalized
 /// for display.
 #[derive(Debug, Clone)]
@@ -25,6 +41,7 @@ pub struct Visit {
     pub patient_name: String,
     pub vet_id: Uuid,
     pub vet_name: String,
+    pub visit_type: VisitType,
     pub visit_date: DateTime<Utc>,
     /// Anamnesis — the owner's account of the problem.
     pub complaint: String,
@@ -57,4 +74,15 @@ pub struct WeightPoint {
     pub visit_id: Uuid,
     pub visit_date: DateTime<Utc>,
     pub weight_kg: f64,
+}
+
+/// One inventory deduction made during a visit — an OUT stock movement
+/// joined with the item's display fields, for the "obat & vaksin dipakai"
+/// section of the visit detail.
+#[derive(Debug, Clone)]
+pub struct VisitStockUsage {
+    pub item_id: Uuid,
+    pub item_name: String,
+    pub unit: String,
+    pub qty: f64,
 }

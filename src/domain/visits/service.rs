@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::dto::{AttachmentRequest, VisitRequest};
-use super::models::{Visit, VisitAttachment};
+use super::models::{Visit, VisitAttachment, VisitStockUsage};
 use super::repo;
 use crate::error::AppError;
 use crate::http::pagination::Paginated;
@@ -24,13 +24,14 @@ pub async fn get(db: &PgPool, id: Uuid) -> Result<Visit, AppError> {
     repo::find(db, id).await?.ok_or(AppError::NotFound("visit"))
 }
 
-pub async fn get_with_attachments(
+pub async fn get_detail(
     db: &PgPool,
     id: Uuid,
-) -> Result<(Visit, Vec<VisitAttachment>), AppError> {
+) -> Result<(Visit, Vec<VisitAttachment>, Vec<VisitStockUsage>), AppError> {
     let visit = get(db, id).await?;
     let attachments = repo::attachments_for(db, id).await?;
-    Ok((visit, attachments))
+    let stock_usage = repo::stock_usage_for(db, id).await?;
+    Ok((visit, attachments, stock_usage))
 }
 
 pub async fn create(db: &PgPool, input: &VisitRequest) -> Result<Visit, AppError> {

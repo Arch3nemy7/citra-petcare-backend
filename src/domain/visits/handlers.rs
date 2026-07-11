@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::dto::{
     AttachmentRequest, ListVisitsParams, VisitAttachmentResponse, VisitDetailResponse,
-    VisitRequest, VisitResponse,
+    VisitRequest, VisitResponse, VisitStockUsageResponse,
 };
 use super::service;
 use crate::domain::auth::AuthUser;
@@ -80,14 +80,14 @@ pub async fn create_visit(
     Ok((StatusCode::CREATED, Json(visit.into())))
 }
 
-/// Fetch one visit, including its attachments.
+/// Fetch one visit, including its attachments and the stock it consumed.
 #[utoipa::path(
     get,
     path = "/api/v1/visits/{id}",
     tag = "visits",
     params(("id" = Uuid, Path, description = "Visit id")),
     responses(
-        (status = 200, description = "Visit with attachments", body = VisitDetailResponse),
+        (status = 200, description = "Visit with attachments and stock usage", body = VisitDetailResponse),
         (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "Unknown visit", body = ProblemDetails, content_type = "application/problem+json"),
     ),
@@ -98,12 +98,16 @@ pub async fn get_visit(
     _user: AuthUser,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<VisitDetailResponse>, AppError> {
-    let (visit, attachments) = service::get_with_attachments(&state.db, id).await?;
+    let (visit, attachments, stock_usage) = service::get_detail(&state.db, id).await?;
     Ok(Json(VisitDetailResponse {
         visit: visit.into(),
         attachments: attachments
             .into_iter()
             .map(VisitAttachmentResponse::from)
+            .collect(),
+        stock_usage: stock_usage
+            .into_iter()
+            .map(VisitStockUsageResponse::from)
             .collect(),
     }))
 }
