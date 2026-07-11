@@ -55,11 +55,15 @@ pub trait Storage: Send + Sync {
 /// Construct the configured driver at boot.
 pub async fn build(config: &Config) -> Result<Arc<dyn Storage>, StorageError> {
     match &config.storage {
-        StorageConfig::Local { root } => Ok(Arc::new(local::LocalStorage::new(
-            root.clone(),
-            config.jwt_secret.clone(),
-            config.public_base_url.clone(),
-        ))),
+        StorageConfig::Local { root } => {
+            let storage = local::LocalStorage::new(
+                root.clone(),
+                config.jwt_secret.clone(),
+                config.public_base_url.clone(),
+            );
+            storage.probe_writable().await?;
+            Ok(Arc::new(storage))
+        }
         StorageConfig::S3 { .. } => Ok(Arc::new(s3::S3Storage::new(config)?)),
     }
 }

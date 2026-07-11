@@ -26,11 +26,16 @@ COPY . .
 # compile-time-checked SQL reads the committed .sqlx cache — no database needed
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin citra-petcare \
-    && cp target/release/citra-petcare /citra-petcare
+    && cp target/release/citra-petcare /citra-petcare \
+    && mkdir -p /out/data/storage
 
 # ---- runtime: distroless static, non-root ----
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /citra-petcare /usr/local/bin/citra-petcare
+# ship the local-storage root owned by the runtime user: a named volume
+# mounted on a path missing from the image gets a root-owned mountpoint,
+# which the nonroot (65532) process cannot write to
+COPY --from=builder --chown=65532:65532 /out/data /data
 USER nonroot
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/citra-petcare"]

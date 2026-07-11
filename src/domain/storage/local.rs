@@ -74,6 +74,28 @@ impl LocalStorage {
         Ok(self.root.join(key))
     }
 
+    /// Fail fast when the root directory cannot be written — the classic
+    /// case is a docker named volume whose mountpoint was created root-owned
+    /// while the app runs unprivileged. Without this boot check the
+    /// misconfiguration only surfaces as errors on the first photo upload.
+    pub async fn probe_writable(&self) -> Result<(), StorageError> {
+        tokio::fs::create_dir_all(&self.root).await.map_err(|e| {
+            StorageError::Backend(format!(
+                "storage root {} cannot be created: {e}",
+                self.root.display()
+            ))
+        })?;
+        let probe = self.root.join(".writable-probe");
+        tokio::fs::write(&probe, b"ok").await.map_err(|e| {
+            StorageError::Backend(format!(
+                "storage root {} is not writable: {e}",
+                self.root.display()
+            ))
+        })?;
+        let _ = tokio::fs::remove_file(&probe).await;
+        Ok(())
+    }
+
     pub async fn save(&self, key: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let path = self.path_for(key)?;
         if let Some(parent) = path.parent() {
@@ -150,6 +172,45 @@ mod tests {
         let exp = Utc::now().timestamp() + 600;
         let sig = s.sign("PUT", "uploads/a.jpg", exp);
         assert!(s.verify("PUT", "uploads/a.jpg", exp, &sig).is_ok());
+    }
+
+    #[tokio::test]
+    async fn probe_accepts_writable_root() {
+        let root = std::env::temp_dir().join(format!("petcare-probe-ok-{}", std::process::id()));
+        let s = LocalStorage::new(
+            root.clone(),
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "http://localhost:8080".to_string(),
+        );
+        s.probe_writable().await.expect("writable root must pass");
+        tokio::fs::remove_dir_all(&root).await.ok();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_rejects_unwritable_root() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!("petcare-probe-ro-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // root ignores permission bits (e.g. some containers) — nothing to test
+        if tokio::fs::write(root.join("x"), b"x").await.is_ok() {
+            std::fs::remove_dir_all(&root).ok();
+            return;
+        }
+        let s = LocalStorage::new(
+            root.clone(),
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "http://localhost:8080".to_string(),
+        );
+        let err = s
+            .probe_writable()
+            .await
+            .expect_err("read-only root must fail");
+        assert!(err.to_string().contains("not writable"), "{err}");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

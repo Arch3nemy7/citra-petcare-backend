@@ -123,6 +123,14 @@ jobs:
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
 
+      - name: fix storage volume ownership
+        run: |
+          # the api runs as distroless nonroot (uid 65532); volumes created
+          # before the image shipped /data/storage have a root-owned
+          # mountpoint the app cannot write to (photo uploads failed)
+          docker volume create citra-petcare_storage-data
+          docker run --rm -v citra-petcare_storage-data:/data alpine:3 chown -R 65532:65532 /data
+
       - name: restart compose stack
         run: |
           # compose keeps using the citra-petcare:latest tag, so manual

@@ -68,7 +68,10 @@ impl AppError {
                 StorageError::InvalidKey(_) => StatusCode::BAD_REQUEST,
                 StorageError::SignatureInvalid => StatusCode::UNAUTHORIZED,
                 StorageError::NotFound => StatusCode::NOT_FOUND,
-                StorageError::Backend(_) => StatusCode::BAD_GATEWAY,
+                // 500, not 502: Cloudflare replaces origin 502 bodies with
+                // its own error page, hiding the problem detail from clients
+                // and making storage failures look like proxy outages.
+                StorageError::Backend(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             Self::Notify(NotifyError::Backend(_)) => StatusCode::BAD_GATEWAY,
             Self::Notify(NotifyError::Config(_)) => StatusCode::INTERNAL_SERVER_ERROR,

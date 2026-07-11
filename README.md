@@ -166,7 +166,7 @@ All configuration comes from the environment (`.env` supported in dev; see
 | `DATABASE_URL` (required) | Postgres connection string |
 | `JWT_SECRET` (required, ≥32 chars) | HS256 signing key |
 | `AUTO_MIGRATE` | apply migrations on server start (default `true`) |
-| `STORAGE_DRIVER` | `local` (dev) or `s3` (OCI Object Storage) |
+| `STORAGE_DRIVER` | `local` (default; files in the `storage-data` volume, "presigned" URLs are HMAC-signed links back into this API) or `s3` (OCI Object Storage) |
 | `S3_ENDPOINT` | `https://{namespace}.compat.objectstorage.{region}.oraclecloud.com` |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | OCI **Customer Secret Keys** |
 | `NOTIFIER_DRIVER` | `log` (dev) or `fcm` |
@@ -225,15 +225,21 @@ JWT_SECRET=<openssl rand -hex 32>
 POSTGRES_PASSWORD=<openssl rand -hex 16>
 PUBLIC_BASE_URL=https://be-petcare.holo.my.id
 CORS_ALLOWED_ORIGINS=https://app.petcare.holo.my.id
-STORAGE_DRIVER=s3
-S3_ENDPOINT=https://<namespace>.compat.objectstorage.<region>.oraclecloud.com
-S3_REGION=<region>
-S3_BUCKET=petcare-files
-S3_ACCESS_KEY_ID=<customer secret key id>
-S3_SECRET_ACCESS_KEY=<customer secret key>
-NOTIFIER_DRIVER=fcm
-FCM_SERVICE_ACCOUNT_PATH=/etc/citra/firebase-service-account.json
-FCM_TOPIC=clinic
+
+# Files default to the local driver: they live in the storage-data volume
+# and "presigned" URLs are HMAC-signed links back into the API — no object
+# storage needed. To use OCI Object Storage instead, uncomment:
+#STORAGE_DRIVER=s3
+#S3_ENDPOINT=https://<namespace>.compat.objectstorage.<region>.oraclecloud.com
+#S3_REGION=<region>
+#S3_BUCKET=petcare-files
+#S3_ACCESS_KEY_ID=<customer secret key id>
+#S3_SECRET_ACCESS_KEY=<customer secret key>
+
+# Push notifications default to the log driver. For FCM, uncomment:
+#NOTIFIER_DRIVER=fcm
+#FCM_SERVICE_ACCOUNT_PATH=/etc/citra/firebase-service-account.json
+#FCM_TOPIC=clinic
 EOF
 
 docker compose up -d --build      # builds, migrates (AUTO_MIGRATE), starts
@@ -242,6 +248,14 @@ curl -s http://127.0.0.1:8080/readyz
 ```
 
 (For FCM, uncomment the service-account volume mount in `docker-compose.yml`.)
+
+With the local storage driver, uploaded files live in the `storage-data`
+volume. The api container runs as a non-root user (uid 65532); the image
+ships `/data/storage` with that ownership so fresh volumes mount writable,
+the deploy workflow `chown`s the volume for stacks created before that fix,
+and `serve` probes the storage root at boot and refuses to start when it
+cannot write there (so a broken volume fails the deploy's `--wait` +
+smoke test instead of surfacing as failed photo uploads).
 
 ### 3. DNS + TLS + proxy
 
