@@ -98,6 +98,8 @@ fn test_config(database_url: String, storage_root: std::path::PathBuf) -> Config
         rate_limit_enabled: false,
         rate_limit_per_second: 100,
         rate_limit_burst: 200,
+        rate_limit_auth_per_second: 100,
+        rate_limit_auth_burst: 200,
         request_timeout_secs: 30,
         body_limit_bytes: 2 * 1024 * 1024,
         presign_ttl_secs: 900,

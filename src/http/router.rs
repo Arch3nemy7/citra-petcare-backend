@@ -1,6 +1,7 @@
 //! Router assembly: documented /api/v1 routes, ops endpoints, Swagger UI,
 //! and the full tower middleware stack.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,12 +9,13 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Request, header};
 use axum::middleware::from_fn;
+use axum::response::Response;
 use axum::routing::get;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower::ServiceBuilder;
-use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
-use tower_governor::key_extractor::SmartIpKeyExtractor;
+use tower_governor::key_extractor::{KeyExtractor, SmartIpKeyExtractor};
+use tower_governor::{GovernorError, GovernorLayer};
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
@@ -33,14 +35,67 @@ use crate::http::middleware::{
 use crate::http::{openapi, ops};
 use crate::state::AppState;
 
+/// Rate-limit key: the real client address. Cloudflare fronts production
+/// and carries the visitor IP in CF-Connecting-IP (always exactly one
+/// value). The X-Forwarded-For chain is rewritten per proxy hop and, as
+/// observed live, keys buckets by Cloudflare *edge node* instead — one
+/// phone then shares its quota with every request relayed through that
+/// edge and trips 429s during ordinary use. Falls back to the standard
+/// headers/peer address for non-Cloudflare traffic (local dev, tests).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClientIpKeyExtractor;
+
+impl KeyExtractor for ClientIpKeyExtractor {
+    type Key = IpAddr;
+
+    fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, GovernorError> {
+        let cf_ip: Option<IpAddr> = req
+            .headers()
+            .get("cf-connecting-ip")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse().ok());
+        match cf_ip {
+            Some(ip) => Ok(ip),
+            None => SmartIpKeyExtractor.extract(req),
+        }
+    }
+}
+
+/// 429 (and key-extraction failures) as RFC 7807 problem bodies.
+fn rate_limit_error(err: GovernorError) -> Response {
+    use crate::http::problem::ProblemDetails;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    match err {
+        GovernorError::TooManyRequests { wait_time, .. } => ProblemDetails::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            format!("rate limit exceeded; retry in {wait_time}s"),
+        )
+        .with_kind("rate-limited")
+        .into_response(),
+        GovernorError::UnableToExtractKey => ProblemDetails::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not determine client address for rate limiting",
+        )
+        .with_kind("rate-limiter")
+        .into_response(),
+        GovernorError::Other { .. } => {
+            ProblemDetails::new(StatusCode::INTERNAL_SERVER_ERROR, "rate limiter failure")
+                .with_kind("rate-limiter")
+                .into_response()
+        }
+    }
+}
+
 /// Build the complete application router. `metrics` is None in tests (no
 /// global Prometheus recorder there).
 pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Router {
     let config = Arc::clone(&state.config);
 
     // ---- documented business routes (absolute /api/v1/... paths) ----
-    let (api, api_doc) = OpenApiRouter::with_openapi(openapi::ApiDoc::openapi())
-        .merge(auth::handlers::router())
+    // Auth is split out so it can carry its own, much stricter rate limit:
+    // login/refresh/logout are the only unauthenticated business endpoints.
+    let (api, mut api_doc) = OpenApiRouter::with_openapi(openapi::ApiDoc::openapi())
         .merge(users::handlers::router())
         .merge(owners::handlers::router())
         .merge(patients::handlers::router())
@@ -53,58 +108,50 @@ pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Route
         .merge(storage::handlers::router())
         .merge(sync::handlers::router())
         .split_for_parts();
+    let (auth_api, auth_doc) = OpenApiRouter::new()
+        .merge(auth::handlers::router())
+        .split_for_parts();
+    api_doc.merge(auth_doc);
 
-    // Per-IP rate limiting on business routes only (never health checks).
-    // SmartIpKeyExtractor prefers X-Forwarded-For/X-Real-Ip (set by nginx),
-    // falling back to the socket address.
-    let api = if config.rate_limit_enabled {
-        let governor_config = Arc::new(
-            GovernorConfigBuilder::default()
-                .per_second(config.rate_limit_per_second)
-                .burst_size(config.rate_limit_burst)
-                .key_extractor(SmartIpKeyExtractor)
-                .finish()
-                .expect("governor configuration is validated at boot"),
-        );
-        // Periodically evict idle per-IP buckets so the limiter's memory
-        // stays bounded.
-        let limiter = governor_config.limiter().clone();
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                ticker.tick().await;
-                limiter.retain_recent();
-            }
-        });
-        let governor = GovernorLayer::new(governor_config).error_handler(|err| {
-            use crate::http::problem::ProblemDetails;
-            use axum::http::StatusCode;
-            use axum::response::IntoResponse;
-            use tower_governor::GovernorError;
-            match err {
-                GovernorError::TooManyRequests { wait_time, .. } => ProblemDetails::new(
-                    StatusCode::TOO_MANY_REQUESTS,
-                    format!("rate limit exceeded; retry in {wait_time}s"),
-                )
-                .with_kind("rate-limited")
-                .into_response(),
-                GovernorError::UnableToExtractKey => ProblemDetails::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "could not determine client address for rate limiting",
-                )
-                .with_kind("rate-limiter")
-                .into_response(),
-                GovernorError::Other { .. } => {
-                    ProblemDetails::new(StatusCode::INTERNAL_SERVER_ERROR, "rate limiter failure")
-                        .with_kind("rate-limiter")
-                        .into_response()
+    // Per-client rate limiting on business routes only (never health
+    // checks): a JWT-protected flood ceiling on the api, a slow bucket on
+    // the public auth endpoints.
+    let (api, auth_api) = if config.rate_limit_enabled {
+        let make_governor = |per_second: u64, burst: u32| {
+            let governor_config = Arc::new(
+                GovernorConfigBuilder::default()
+                    .per_second(per_second)
+                    .burst_size(burst)
+                    .key_extractor(ClientIpKeyExtractor)
+                    .finish()
+                    .expect("governor configuration is validated at boot"),
+            );
+            // Periodically evict idle per-client buckets so the limiter's
+            // memory stays bounded.
+            let limiter = governor_config.limiter().clone();
+            tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(60));
+                loop {
+                    ticker.tick().await;
+                    limiter.retain_recent();
                 }
-            }
-        });
-        api.layer(governor)
+            });
+            GovernorLayer::new(governor_config).error_handler(rate_limit_error)
+        };
+        (
+            api.layer(make_governor(
+                config.rate_limit_per_second,
+                config.rate_limit_burst,
+            )),
+            auth_api.layer(make_governor(
+                config.rate_limit_auth_per_second,
+                config.rate_limit_auth_burst,
+            )),
+        )
     } else {
-        api
+        (api, auth_api)
     };
+    let api = api.merge(auth_api);
 
     // ---- ops routes + swagger ----
     // The local storage driver's signed upload/download routes sit outside

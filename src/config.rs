@@ -135,6 +135,8 @@ pub struct Config {
     pub rate_limit_enabled: bool,
     pub rate_limit_per_second: u64,
     pub rate_limit_burst: u32,
+    pub rate_limit_auth_per_second: u64,
+    pub rate_limit_auth_burst: u32,
     pub request_timeout_secs: u64,
     pub body_limit_bytes: usize,
     pub presign_ttl_secs: u64,
@@ -207,16 +209,33 @@ impl Config {
         }
 
         let rate_limit_enabled = p.or_default("RATE_LIMIT_ENABLED", &raw.rate_limit_enabled, true);
-        // sized for image-heavy screens: opening a page of pet photos fires a
-        // burst of presign requests on top of the JSON calls
+        // Business routes already require a JWT, so the limiter is only a
+        // flood ceiling there — sized so a clinic's worth of devices behind
+        // one NAT never notices it (image-heavy screens burst presign calls).
         let rate_limit_per_second: u64 =
-            p.or_default("RATE_LIMIT_PER_SECOND", &raw.rate_limit_per_second, 25);
+            p.or_default("RATE_LIMIT_PER_SECOND", &raw.rate_limit_per_second, 50);
         if rate_limit_per_second == 0 {
             p.push("RATE_LIMIT_PER_SECOND must be at least 1");
         }
-        let rate_limit_burst: u32 = p.or_default("RATE_LIMIT_BURST", &raw.rate_limit_burst, 100);
+        let rate_limit_burst: u32 = p.or_default("RATE_LIMIT_BURST", &raw.rate_limit_burst, 300);
         if rate_limit_burst == 0 {
             p.push("RATE_LIMIT_BURST must be at least 1");
+        }
+        // The public auth endpoints are the password brute-force surface —
+        // these stay slow. Legitimate traffic is one login per shift and one
+        // token refresh per device per 15 minutes.
+        let rate_limit_auth_per_second: u64 = p.or_default(
+            "RATE_LIMIT_AUTH_PER_SECOND",
+            &raw.rate_limit_auth_per_second,
+            1,
+        );
+        if rate_limit_auth_per_second == 0 {
+            p.push("RATE_LIMIT_AUTH_PER_SECOND must be at least 1");
+        }
+        let rate_limit_auth_burst: u32 =
+            p.or_default("RATE_LIMIT_AUTH_BURST", &raw.rate_limit_auth_burst, 10);
+        if rate_limit_auth_burst == 0 {
+            p.push("RATE_LIMIT_AUTH_BURST must be at least 1");
         }
         let request_timeout_secs: u64 =
             p.or_default("REQUEST_TIMEOUT_SECS", &raw.request_timeout_secs, 30);
@@ -321,6 +340,8 @@ impl Config {
             rate_limit_enabled,
             rate_limit_per_second,
             rate_limit_burst,
+            rate_limit_auth_per_second,
+            rate_limit_auth_burst,
             request_timeout_secs,
             body_limit_bytes,
             presign_ttl_secs,
@@ -372,6 +393,8 @@ struct RawConfig {
     rate_limit_enabled: Option<String>,
     rate_limit_per_second: Option<String>,
     rate_limit_burst: Option<String>,
+    rate_limit_auth_per_second: Option<String>,
+    rate_limit_auth_burst: Option<String>,
     request_timeout_secs: Option<String>,
     body_limit_bytes: Option<String>,
     presign_ttl_secs: Option<String>,

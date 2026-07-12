@@ -47,10 +47,13 @@ services:
       FCM_SERVICE_ACCOUNT_PATH: ${FCM_SERVICE_ACCOUNT_PATH:-}
       FCM_TOPIC: ${FCM_TOPIC:-clinic}
       SCHEDULER_ENABLED: "true"
-      # a screen of pet photos resolves many presigned URLs at once; keep
-      # these well above what JSON-only traffic would need
-      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-25}
-      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-100}
+      # business routes need a JWT anyway, so this is only a flood ceiling —
+      # sized so a clinic's worth of devices never notices; the public auth
+      # endpoints keep a separate slow bucket (brute-force surface)
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-50}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-300}
+      RATE_LIMIT_AUTH_PER_SECOND: ${RATE_LIMIT_AUTH_PER_SECOND:-1}
+      RATE_LIMIT_AUTH_BURST: ${RATE_LIMIT_AUTH_BURST:-10}
     volumes:
       - storage-data:/data/storage
       # - ./firebase-service-account.json:/etc/citra/firebase-service-account.json:ro
