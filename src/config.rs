@@ -207,12 +207,14 @@ impl Config {
         }
 
         let rate_limit_enabled = p.or_default("RATE_LIMIT_ENABLED", &raw.rate_limit_enabled, true);
+        // sized for image-heavy screens: opening a page of pet photos fires a
+        // burst of presign requests on top of the JSON calls
         let rate_limit_per_second: u64 =
-            p.or_default("RATE_LIMIT_PER_SECOND", &raw.rate_limit_per_second, 10);
+            p.or_default("RATE_LIMIT_PER_SECOND", &raw.rate_limit_per_second, 25);
         if rate_limit_per_second == 0 {
             p.push("RATE_LIMIT_PER_SECOND must be at least 1");
         }
-        let rate_limit_burst: u32 = p.or_default("RATE_LIMIT_BURST", &raw.rate_limit_burst, 30);
+        let rate_limit_burst: u32 = p.or_default("RATE_LIMIT_BURST", &raw.rate_limit_burst, 100);
         if rate_limit_burst == 0 {
             p.push("RATE_LIMIT_BURST must be at least 1");
         }

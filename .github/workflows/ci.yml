@@ -85,7 +85,8 @@ jobs:
   # ---- CD: runs on the self-hosted runner on the production VPS ----
   # Builds the image natively (arm64, reusing the host's docker layer cache),
   # keeps a rollback history in GHCR, then restarts the compose stack.
-  # The server's .env is never touched by CI.
+  # CI never adds values to the server's .env; it only removes known-stale
+  # lines seeded from an old .env.example (see "drop stale rate limits").
   deploy:
     name: deploy to VPS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -130,6 +131,14 @@ jobs:
           # mountpoint the app cannot write to (photo uploads failed)
           docker volume create citra-petcare_storage-data
           docker run --rm -v citra-petcare_storage-data:/data alpine:3 chown -R 65532:65532 /data
+
+      - name: drop stale rate limits from server .env
+        run: |
+          # .envs seeded from the old .env.example pinned 10/30, silently
+          # overriding the raised compose defaults (25/100) — photo-heavy
+          # screens then hit 429s. Delete exactly those stale values;
+          # anything else is a deliberate operator override and stays.
+          sed -i -e '/^RATE_LIMIT_PER_SECOND=10$/d' -e '/^RATE_LIMIT_BURST=30$/d' "$DEPLOY_PATH/.env"
 
       - name: restart compose stack
         run: |
