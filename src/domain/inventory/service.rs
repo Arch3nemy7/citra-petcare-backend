@@ -1,7 +1,9 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::dto::{BatchUpdateRequest, InventoryItemRequest, MovementRequest, MovementUpdateRequest};
+use super::dto::{
+    BatchUpdateRequest, InventoryItemRequest, MovementRequest, MovementUpdateRequest,
+};
 use super::models::{
     InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement, allocate_batches,
 };
