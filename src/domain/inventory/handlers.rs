@@ -6,8 +6,8 @@ use utoipa_axum::routes;
 use uuid::Uuid;
 
 use super::dto::{
-    InventoryItemDetailResponse, InventoryItemRequest, InventoryItemResponse, ListItemsParams,
-    MovementRequest, MovementResponse, RecordedMovementResponse,
+    BatchUpdateRequest, InventoryItemDetailResponse, InventoryItemRequest, InventoryItemResponse,
+    ListItemsParams, MovementRequest, MovementResponse, RecordedMovementResponse,
 };
 use super::service;
 use crate::domain::auth::AuthUser;
@@ -21,6 +21,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(list_items, create_item))
         .routes(routes!(get_item, upsert_item, delete_item))
+        .routes(routes!(update_batch))
         .routes(routes!(list_movements, record_movement))
 }
 
@@ -145,6 +146,37 @@ pub async fn delete_item(
 ) -> Result<StatusCode, AppError> {
     service::delete(&state.db, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Correct one batch's expiry date. The batch is identified by its current
+/// expiry date + lot number (as shown in the item's batch list); every
+/// stock-in that opened it is re-dated and the item's expiry badge is
+/// refreshed. Returns the item with its re-derived batches.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/inventory/items/{id}/batches",
+    tag = "inventory",
+    params(("id" = Uuid, Path, description = "Item id")),
+    request_body = BatchUpdateRequest,
+    responses(
+        (status = 200, description = "Batch re-dated; item with refreshed batches", body = InventoryItemDetailResponse),
+        (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown item or batch", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 422, description = "Validation failed", body = ProblemDetails, content_type = "application/problem+json"),
+    ),
+    security(("bearerAuth" = []))
+)]
+pub async fn update_batch(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    ApiPath(id): ApiPath<Uuid>,
+    ValidatedJson(body): ValidatedJson<BatchUpdateRequest>,
+) -> Result<Json<InventoryItemDetailResponse>, AppError> {
+    let (item, batches) = service::redate_batch(&state.db, id, &body).await?;
+    Ok(Json(InventoryItemDetailResponse {
+        item: item.into(),
+        batches: batches.into_iter().map(Into::into).collect(),
+    }))
 }
 
 /// Stock ledger for one item (newest first).

@@ -101,6 +101,21 @@ pub struct InventoryItemDetailResponse {
     pub batches: Vec<StockBatchResponse>,
 }
 
+/// Body for PATCH /inventory/items/{id}/batches: correct one batch's expiry
+/// date. The batch is identified by its current expiry date + lot number
+/// (the same pair the batch list shows); every stock-in that opened it is
+/// re-dated, so the derived batch moves as a whole.
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchUpdateRequest {
+    /// Current expiry date of the batch.
+    pub expiry_date: NaiveDate,
+    /// Lot number of the batch; omit for batches received without one.
+    #[validate(length(min = 1, max = 100))]
+    pub lot_no: Option<String>,
+    pub new_expiry_date: NaiveDate,
+}
+
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MovementRequest {

@@ -153,6 +153,98 @@ async fn batches_follow_fefo_and_refresh_the_expiry_badge() {
 }
 
 #[tokio::test]
+async fn batch_expiry_can_be_corrected() {
+    let (app, token) = spawn_logged_in().await;
+    let item_id = create_item(&app.router, &token).await;
+    let movements_uri = format!("/api/v1/inventory/items/{item_id}/movements");
+    let batches_uri = format!("/api/v1/inventory/items/{item_id}/batches");
+
+    // one lot-numbered batch, one without a lot number
+    for payload in [
+        json!({ "type": "IN", "qty": 6, "expiryDate": "2026-08-30", "lotNo": "AMX-A" }),
+        json!({ "type": "IN", "qty": 8, "expiryDate": "2027-01-14" }),
+    ] {
+        let (status, body) = request(
+            &app.router,
+            "POST",
+            &movements_uri,
+            Some(&token),
+            Some(payload),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    // wrong key → 404 without touching anything: unknown date, mismatched
+    // lot, missing lot on a lot-numbered batch
+    for payload in [
+        json!({ "expiryDate": "2026-01-01", "lotNo": "AMX-A", "newExpiryDate": "2026-09-15" }),
+        json!({ "expiryDate": "2026-08-30", "lotNo": "AMX-X", "newExpiryDate": "2026-09-15" }),
+        json!({ "expiryDate": "2026-08-30", "newExpiryDate": "2026-09-15" }),
+    ] {
+        let (status, body) = request(
+            &app.router,
+            "PATCH",
+            &batches_uri,
+            Some(&token),
+            Some(payload),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    }
+
+    // re-date the lot-numbered batch; the badge follows the corrected date
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &batches_uri,
+        Some(&token),
+        Some(json!({
+            "expiryDate": "2026-08-30", "lotNo": "AMX-A",
+            "newExpiryDate": "2026-09-15",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["expiryDate"], "2026-09-15");
+    let batches = body["batches"].as_array().unwrap();
+    assert_eq!(batches.len(), 2, "{body}");
+    assert_eq!(batches[0]["lotNo"], "AMX-A");
+    assert_eq!(batches[0]["expiryDate"], "2026-09-15");
+    assert_eq!(batches[0]["qtyRemaining"], 6.0);
+
+    // re-dating past the other lot re-orders FEFO and moves the badge
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &batches_uri,
+        Some(&token),
+        Some(json!({
+            "expiryDate": "2026-09-15", "lotNo": "AMX-A",
+            "newExpiryDate": "2027-06-30",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["expiryDate"], "2027-01-14");
+    let batches = body["batches"].as_array().unwrap();
+    assert_eq!(batches[0]["lotNo"], serde_json::Value::Null);
+    assert_eq!(batches[1]["lotNo"], "AMX-A");
+
+    // the lot-less batch is addressable by expiry date alone
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &batches_uri,
+        Some(&token),
+        Some(json!({ "expiryDate": "2027-01-14", "newExpiryDate": "2027-02-01" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["expiryDate"], "2027-02-01");
+}
+
+#[tokio::test]
 async fn out_beyond_stock_is_rejected() {
     let (app, token) = spawn_logged_in().await;
     let item_id = create_item(&app.router, &token).await;

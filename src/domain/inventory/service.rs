@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::dto::{InventoryItemRequest, MovementRequest};
+use super::dto::{BatchUpdateRequest, InventoryItemRequest, MovementRequest};
 use super::models::{
     InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement, allocate_batches,
 };
@@ -62,6 +62,28 @@ pub async fn delete(db: &PgPool, id: Uuid) -> Result<(), AppError> {
         return Err(AppError::NotFound("inventory item"));
     }
     Ok(())
+}
+
+/// Correct one batch's expiry date (a data-entry fix). The batch is
+/// identified by its current expiry date + lot number; returns the
+/// refreshed item + batches so callers can render the new FEFO order.
+pub async fn redate_batch(
+    db: &PgPool,
+    item_id: Uuid,
+    input: &BatchUpdateRequest,
+) -> Result<(InventoryItem, Vec<StockBatch>), AppError> {
+    let matched = repo::redate_batch(
+        db,
+        item_id,
+        input.expiry_date,
+        input.lot_no.as_deref(),
+        input.new_expiry_date,
+    )
+    .await?;
+    if !matched {
+        return Err(AppError::NotFound("stock batch"));
+    }
+    get_detail(db, item_id).await
 }
 
 pub async fn list_movements(

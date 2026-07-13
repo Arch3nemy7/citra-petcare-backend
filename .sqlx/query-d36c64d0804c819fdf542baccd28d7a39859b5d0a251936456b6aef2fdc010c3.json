@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE stock_movements\n        SET expiry_date = $4\n        WHERE item_id = $1 AND deleted_at IS NULL AND type = 'IN'\n          AND expiry_date = $2 AND lot_no IS NOT DISTINCT FROM $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date",
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d36c64d0804c819fdf542baccd28d7a39859b5d0a251936456b6aef2fdc010c3"
+}

@@ -297,3 +297,64 @@ pub async fn record_movement(
     tx.commit().await?;
     Ok((movement, new_stock))
 }
+
+/// Move one batch to a new expiry date: re-date every stock-in matching the
+/// batch key (current expiry + lot), then refresh the item's expiry badge to
+/// the earliest remaining batch — all inside one item-locked transaction so
+/// concurrent movements serialize against it. Returns false when no
+/// stock-in matched (unknown batch).
+pub async fn redate_batch(
+    db: &PgPool,
+    item_id: Uuid,
+    expiry_date: NaiveDate,
+    lot_no: Option<&str>,
+    new_expiry_date: NaiveDate,
+) -> Result<bool, AppError> {
+    let mut tx = db.begin().await?;
+
+    let locked = sqlx::query_scalar!(
+        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        item_id
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    if locked.is_none() {
+        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
+    }
+
+    let updated = sqlx::query!(
+        r#"
+        UPDATE stock_movements
+        SET expiry_date = $4
+        WHERE item_id = $1 AND deleted_at IS NULL AND type = 'IN'
+          AND expiry_date = $2 AND lot_no IS NOT DISTINCT FROM $3
+        "#,
+        item_id,
+        expiry_date,
+        lot_no,
+        new_expiry_date
+    )
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Ok(false);
+    }
+
+    // At least one expiry-dated stock-in exists (we just re-dated it), so
+    // the badge refresh always has batches to allocate.
+    let batch_ins = batch_ins_for(&mut *tx, item_id).await?;
+    let consumed = consumed_total(&mut *tx, item_id).await?;
+    let next_expiry = allocate_batches(batch_ins, consumed)
+        .first()
+        .map(|batch| batch.expiry_date);
+    sqlx::query!(
+        "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
+        item_id,
+        next_expiry
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(true)
+}
