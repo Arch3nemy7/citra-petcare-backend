@@ -245,6 +245,159 @@ async fn batch_expiry_can_be_corrected() {
 }
 
 #[tokio::test]
+async fn movement_qty_can_be_corrected() {
+    let (app, token) = spawn_logged_in().await;
+    let item_id = create_item(&app.router, &token).await;
+    let movements_uri = format!("/api/v1/inventory/items/{item_id}/movements");
+
+    // the misclick: 90 received where 9 was meant
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "IN", "qty": 90, "expiryDate": "2027-01-14" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let movement_id = body["id"].as_str().unwrap().to_string();
+
+    // OUT 5 so the correction has consumption to respect
+    let (_, body) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "OUT", "qty": 5 })),
+    )
+    .await;
+    assert_eq!(body["currentStock"], 85.0);
+
+    // correcting below what is already consumed is rejected
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &format!("{movements_uri}/{movement_id}"),
+        Some(&token),
+        Some(json!({ "qty": 4 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["type"], "urn:citra-petcare:problem:insufficient-stock");
+
+    // 90 → 9: stock re-derives and the batch shrinks with it
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &format!("{movements_uri}/{movement_id}"),
+        Some(&token),
+        Some(json!({ "qty": 9 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["qty"], 9.0);
+    assert_eq!(body["currentStock"], 4.0);
+    let (_, body) = request(
+        &app.router,
+        "GET",
+        &format!("/api/v1/inventory/items/{item_id}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(body["currentStock"], 4.0);
+    assert_eq!(body["batches"][0]["qtyRemaining"], 4.0, "{body}");
+
+    // sign rules still apply on edit
+    let (status, _) = request(
+        &app.router,
+        "PATCH",
+        &format!("{movements_uri}/{movement_id}"),
+        Some(&token),
+        Some(json!({ "qty": -3 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // unknown movement id → 404
+    let (status, _) = request(
+        &app.router,
+        "PATCH",
+        &format!("{movements_uri}/00000000-0000-0000-0000-000000000000"),
+        Some(&token),
+        Some(json!({ "qty": 9 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn visit_linked_movements_cannot_be_edited() {
+    let (app, token) = spawn_logged_in().await;
+    let item_id = create_item(&app.router, &token).await;
+    let movements_uri = format!("/api/v1/inventory/items/{item_id}/movements");
+
+    // owner-less patient + visit, so the OUT can be linked to a visit
+    let (status, patient) = request(
+        &app.router,
+        "POST",
+        "/api/v1/patients",
+        Some(&token),
+        Some(json!({ "name": "Milo", "species": "CAT" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{patient}");
+    let (status, me) = request(&app.router, "GET", "/api/v1/users/me", Some(&token), None).await;
+    assert_eq!(status, StatusCode::OK, "{me}");
+    let (status, visit) = request(
+        &app.router,
+        "POST",
+        "/api/v1/visits",
+        Some(&token),
+        Some(json!({
+            "patientId": patient["id"], "vetId": me["id"],
+            "visitType": "PERIKSA", "visitDate": "2026-07-13T09:00:00Z",
+            "complaint": "Nafsu makan menurun",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{visit}");
+
+    let (_, _) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "IN", "qty": 10 })),
+    )
+    .await;
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        &movements_uri,
+        Some(&token),
+        Some(json!({ "type": "OUT", "qty": 2, "visitId": visit["id"] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let movement_id = body["id"].as_str().unwrap().to_string();
+
+    let (status, body) = request(
+        &app.router,
+        "PATCH",
+        &format!("{movements_uri}/{movement_id}"),
+        Some(&token),
+        Some(json!({ "qty": 1 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(
+        body["type"],
+        "urn:citra-petcare:problem:visit-linked-movement"
+    );
+}
+
+#[tokio::test]
 async fn out_beyond_stock_is_rejected() {
     let (app, token) = spawn_logged_in().await;
     let item_id = create_item(&app.router, &token).await;

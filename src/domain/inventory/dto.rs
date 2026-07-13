@@ -138,6 +138,18 @@ pub struct MovementRequest {
     pub lot_no: Option<String>,
 }
 
+/// Body for PATCH /inventory/items/{id}/movements/{movementId}: correct a
+/// mistyped quantity (e.g. 90 entered instead of 9). Sign rules for the
+/// movement's type still apply, and the edit is rejected when it would
+/// drive derived stock negative. Movements recorded by a visit cannot be
+/// edited here — correct those from the visit.
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MovementUpdateRequest {
+    /// Positive for IN/OUT; ADJUSTMENT accepts a signed delta.
+    pub qty: f64,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MovementResponse {

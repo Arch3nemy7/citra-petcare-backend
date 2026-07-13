@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use super::dto::{
     BatchUpdateRequest, InventoryItemDetailResponse, InventoryItemRequest, InventoryItemResponse,
-    ListItemsParams, MovementRequest, MovementResponse, RecordedMovementResponse,
+    ListItemsParams, MovementRequest, MovementResponse, MovementUpdateRequest,
+    RecordedMovementResponse,
 };
 use super::service;
 use crate::domain::auth::AuthUser;
@@ -23,6 +24,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_item, upsert_item, delete_item))
         .routes(routes!(update_batch))
         .routes(routes!(list_movements, record_movement))
+        .routes(routes!(update_movement))
 }
 
 /// List inventory items with their derived stock levels.
@@ -233,4 +235,39 @@ pub async fn record_movement(
             current_stock,
         }),
     ))
+}
+
+/// Correct one movement's quantity (a data-entry fix, e.g. 90 → 9).
+/// Sign rules for the movement's type still apply; edits that would drive
+/// stock negative are rejected, and movements recorded by a visit must be
+/// corrected from the visit instead.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/inventory/items/{id}/movements/{movement_id}",
+    tag = "inventory",
+    params(
+        ("id" = Uuid, Path, description = "Item id"),
+        ("movement_id" = Uuid, Path, description = "Movement id"),
+    ),
+    request_body = MovementUpdateRequest,
+    responses(
+        (status = 200, description = "Updated; entry plus the corrected stock level", body = RecordedMovementResponse),
+        (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown item or movement", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 422, description = "Invalid quantity, insufficient stock, or visit-linked movement", body = ProblemDetails, content_type = "application/problem+json"),
+    ),
+    security(("bearerAuth" = []))
+)]
+pub async fn update_movement(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    ApiPath((id, movement_id)): ApiPath<(Uuid, Uuid)>,
+    ValidatedJson(body): ValidatedJson<MovementUpdateRequest>,
+) -> Result<Json<RecordedMovementResponse>, AppError> {
+    let (movement, current_stock) =
+        service::update_movement_qty(&state.db, id, movement_id, &body).await?;
+    Ok(Json(RecordedMovementResponse {
+        movement: movement.into(),
+        current_stock,
+    }))
 }

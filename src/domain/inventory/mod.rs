@@ -11,4 +11,6 @@ pub enum InventoryError {
     InsufficientStock { requested: f64, available: f64 },
     #[error("{0}")]
     InvalidQuantity(String),
+    #[error("this movement was recorded by a visit; correct it from the visit instead")]
+    VisitLinkedMovement,
 }

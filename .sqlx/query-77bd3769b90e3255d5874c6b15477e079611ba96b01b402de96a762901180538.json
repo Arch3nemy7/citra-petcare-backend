@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT type AS \"movement_type: MovementType\", qty, visit_id\n        FROM stock_movements\n        WHERE id = $1 AND item_id = $2 AND deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "movement_type: MovementType",
+        "type_info": {
+          "Custom": {
+            "name": "movement_type",
+            "kind": {
+              "Enum": [
+                "IN",
+                "OUT",
+                "ADJUSTMENT"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "type"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "qty",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "qty"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "visit_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "stock_movements",
+            "name": "visit_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "77bd3769b90e3255d5874c6b15477e079611ba96b01b402de96a762901180538"
+}

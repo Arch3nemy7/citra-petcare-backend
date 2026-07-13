@@ -298,6 +298,124 @@ pub async fn record_movement(
     Ok((movement, new_stock))
 }
 
+/// Correct a movement's quantity inside an item-locked transaction: the
+/// same no-negative-stock rule as recording applies, evaluated as if the
+/// entry had been written with the new qty all along. Visit-linked
+/// movements are rejected — they must stay consistent with their visit's
+/// stock usage. Refreshes the expiry badge (an edited stock-in changes
+/// what remains of its batch).
+pub async fn update_movement_qty(
+    db: &PgPool,
+    item_id: Uuid,
+    movement_id: Uuid,
+    qty: f64,
+) -> Result<(StockMovement, f64), AppError> {
+    let mut tx = db.begin().await?;
+
+    let locked = sqlx::query_scalar!(
+        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        item_id
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    if locked.is_none() {
+        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
+    }
+
+    let existing = sqlx::query!(
+        r#"
+        SELECT type AS "movement_type: MovementType", qty, visit_id
+        FROM stock_movements
+        WHERE id = $1 AND item_id = $2 AND deleted_at IS NULL
+        "#,
+        movement_id,
+        item_id
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AppError::NotFound("stock movement"))?;
+
+    if existing.visit_id.is_some() {
+        return Err(InventoryError::VisitLinkedMovement.into());
+    }
+    match existing.movement_type {
+        MovementType::In | MovementType::Out if qty <= 0.0 => {
+            return Err(InventoryError::InvalidQuantity(
+                "qty must be positive for IN/OUT movements".to_string(),
+            )
+            .into());
+        }
+        MovementType::Adjustment if qty == 0.0 => {
+            return Err(InventoryError::InvalidQuantity(
+                "qty must be non-zero for an ADJUSTMENT".to_string(),
+            )
+            .into());
+        }
+        _ => {}
+    }
+
+    let current: f64 = sqlx::query_scalar!(
+        r#"
+        SELECT COALESCE(SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END), 0)
+            AS "stock!"
+        FROM stock_movements
+        WHERE item_id = $1 AND deleted_at IS NULL
+        "#,
+        item_id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let delta_of = |q: f64| match existing.movement_type {
+        MovementType::In => q,
+        MovementType::Out => -q,
+        MovementType::Adjustment => q,
+    };
+    let without_entry = current - delta_of(existing.qty);
+    let new_stock = without_entry + delta_of(qty);
+    if new_stock < 0.0 {
+        return Err(InventoryError::InsufficientStock {
+            requested: qty.abs(),
+            available: without_entry,
+        }
+        .into());
+    }
+
+    let movement = sqlx::query_as!(
+        StockMovement,
+        r#"
+        UPDATE stock_movements
+        SET qty = $3
+        WHERE id = $1 AND item_id = $2
+        RETURNING id, item_id, type AS "movement_type: MovementType", qty, reason,
+                  visit_id, expiry_date, lot_no, created_at, updated_at
+        "#,
+        movement_id,
+        item_id,
+        qty
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let batch_ins = batch_ins_for(&mut *tx, item_id).await?;
+    if !batch_ins.is_empty() {
+        let consumed = consumed_total(&mut *tx, item_id).await?;
+        let next_expiry = allocate_batches(batch_ins, consumed)
+            .first()
+            .map(|batch| batch.expiry_date);
+        sqlx::query!(
+            "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
+            item_id,
+            next_expiry
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok((movement, new_stock))
+}
+
 /// Move one batch to a new expiry date: re-date every stock-in matching the
 /// batch key (current expiry + lot), then refresh the item's expiry badge to
 /// the earliest remaining batch — all inside one item-locked transaction so

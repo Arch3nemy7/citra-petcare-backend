@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::dto::{BatchUpdateRequest, InventoryItemRequest, MovementRequest};
+use super::dto::{BatchUpdateRequest, InventoryItemRequest, MovementRequest, MovementUpdateRequest};
 use super::models::{
     InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement, allocate_batches,
 };
@@ -133,4 +133,16 @@ pub async fn record_movement(
         input.lot_no.as_deref(),
     )
     .await
+}
+
+/// Correct one movement's quantity (a data-entry fix). Sign rules,
+/// the visit-linked guard and the no-negative-stock rule all run in the
+/// repo transaction where they are race-free.
+pub async fn update_movement_qty(
+    db: &PgPool,
+    item_id: Uuid,
+    movement_id: Uuid,
+    input: &MovementUpdateRequest,
+) -> Result<(StockMovement, f64), AppError> {
+    repo::update_movement_qty(db, item_id, movement_id, input.qty).await
 }
