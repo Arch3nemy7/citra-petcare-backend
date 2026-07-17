@@ -30,6 +30,15 @@ pub async fn run(db: &PgPool) -> Result<(), AppError> {
 
     let seed_password =
         std::env::var("SEED_PASSWORD").unwrap_or_else(|_| DEFAULT_SEED_PASSWORD.to_string());
+    // Login enforces 8..=128 characters (LoginRequest); an out-of-range seed
+    // password would create accounts that can never authenticate.
+    let password_chars = seed_password.chars().count();
+    if !(8..=128).contains(&password_chars) {
+        return Err(AppError::Internal(format!(
+            "SEED_PASSWORD must be 8-128 characters (got {password_chars}); \
+             login would reject the seeded accounts otherwise"
+        )));
+    }
     // argon2 runs on the blocking pool; hash once per user before the tx
     let citra_hash = password::hash_password(seed_password.clone()).await?;
     let bagus_hash = password::hash_password(seed_password.clone()).await?;

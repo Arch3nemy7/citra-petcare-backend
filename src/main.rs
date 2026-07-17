@@ -74,6 +74,11 @@ async fn serve(config: Config, pool: sqlx::PgPool) -> anyhow::Result<()> {
         tracing::info!("migrations applied (AUTO_MIGRATE=true)");
     }
 
+    // The login timing-equalization hash is computed lazily; force it now on
+    // the blocking pool so the Argon2 work (tens of ms) never lands on an
+    // async worker thread serving the first unknown-email login.
+    tokio::task::spawn_blocking(domain::auth::service::warm_up).await?;
+
     let storage = domain::storage::build(&config).await?;
     let notifier = domain::notifications::build(&config).await?;
     tracing::info!(

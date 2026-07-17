@@ -4,7 +4,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{TEST_PASSWORD, create_user, login, request, spawn_app};
+use common::{TEST_PASSWORD, create_user, login, request, request_with_authorization, spawn_app};
 use serde_json::json;
 
 #[tokio::test]
@@ -109,13 +109,15 @@ async fn refresh_rotates_and_detects_reuse() {
 async fn logout_revokes_refresh_token() {
     let app = spawn_app().await;
     create_user(&app.db, "vet@test.id").await;
-    let (access, refresh) = login(&app.router, "vet@test.id").await;
+    let (_access, refresh) = login(&app.router, "vet@test.id").await;
 
+    // possession of the refresh token is the only credential logout needs —
+    // a device whose access token expired can still end its session
     let (status, _) = request(
         &app.router,
         "POST",
         "/api/v1/auth/logout",
-        Some(&access),
+        None,
         Some(json!({ "refreshToken": refresh })),
     )
     .await;
@@ -127,6 +129,44 @@ async fn logout_revokes_refresh_token() {
         "/api/v1/auth/refresh",
         None,
         Some(json!({ "refreshToken": refresh })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // idempotent: repeating it, even with garbage, is still 204
+    let (status, _) = request(
+        &app.router,
+        "POST",
+        "/api/v1/auth/logout",
+        None,
+        Some(json!({ "refreshToken": "not-even-a-token" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn bearer_scheme_is_case_insensitive() {
+    let app = spawn_app().await;
+    create_user(&app.db, "vet@test.id").await;
+    let (access, _refresh) = login(&app.router, "vet@test.id").await;
+
+    // RFC 7235: the auth scheme is case-insensitive
+    let (status, body) = request_with_authorization(
+        &app.router,
+        "GET",
+        "/api/v1/users/me",
+        &format!("bearer {access}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // a different scheme is still rejected
+    let (status, _) = request_with_authorization(
+        &app.router,
+        "GET",
+        "/api/v1/users/me",
+        &format!("Basic {access}"),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);

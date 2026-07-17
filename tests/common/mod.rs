@@ -165,6 +165,36 @@ pub async fn request(
     (status, json)
 }
 
+/// Like [`request`], but with a raw `Authorization` value (scheme included),
+/// for tests that exercise header parsing itself.
+pub async fn request_with_authorization(
+    router: &Router,
+    method: &str,
+    uri: &str,
+    authorization: &str,
+) -> (StatusCode, serde_json::Value) {
+    let request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, authorization)
+        .body(Body::empty())
+        .expect("request builds");
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router responds");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body reads")
+        .to_bytes();
+    let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
 /// Login and return (access_token, refresh_token).
 pub async fn login(router: &Router, email: &str) -> (String, String) {
     let (status, body) = request(

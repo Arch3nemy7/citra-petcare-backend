@@ -9,24 +9,24 @@ use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 
-use super::AuthError;
+use crate::error::AppError;
 
-pub async fn hash_password(password: String) -> Result<String, AuthError> {
+pub async fn hash_password(password: String) -> Result<String, AppError> {
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
             .hash_password(password.as_bytes(), &salt)
             .map(|hash| hash.to_string())
-            .map_err(|e| AuthError::Internal(format!("password hashing failed: {e}")))
+            .map_err(|e| AppError::Internal(format!("password hashing failed: {e}")))
     })
     .await
-    .map_err(|e| AuthError::Internal(format!("hashing task panicked: {e}")))?
+    .map_err(|e| AppError::Internal(format!("hashing task panicked: {e}")))?
 }
 
 /// Returns `Ok(false)` (not an error) for wrong passwords *and* unparseable
 /// hashes, so callers can't accidentally turn a bad row into a 500 that leaks
 /// which accounts exist.
-pub async fn verify_password(password_hash: String, password: String) -> Result<bool, AuthError> {
+pub async fn verify_password(password_hash: String, password: String) -> Result<bool, AppError> {
     tokio::task::spawn_blocking(move || {
         let Ok(parsed) = PasswordHash::new(&password_hash) else {
             tracing::warn!("stored password hash could not be parsed");
@@ -37,7 +37,7 @@ pub async fn verify_password(password_hash: String, password: String) -> Result<
             .is_ok())
     })
     .await
-    .map_err(|e| AuthError::Internal(format!("verification task panicked: {e}")))?
+    .map_err(|e| AppError::Internal(format!("verification task panicked: {e}")))?
 }
 
 #[cfg(test)]
