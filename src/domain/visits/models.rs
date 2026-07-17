@@ -12,13 +12,17 @@ pub enum AttachmentKind {
     Photo,
     Xray,
     Lab,
+    /// The owner's signed letter of approval for a procedure (anesthesia,
+    /// surgery, inpatient care). Attached to STERILISASI/OPNAME visits.
+    Consent,
     #[default]
     Other,
 }
 
 /// What kind of visit was recorded. Grooming visits skip the medical fields
-/// in the app; the other three follow the full anamnesis → exam → diagnosis
-/// flow.
+/// in the app; the other four follow the full anamnesis → exam → diagnosis
+/// flow. Sterilisasi and Opname additionally carry a CONSENT attachment
+/// (the owner's signed approval).
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema,
 )]
@@ -30,6 +34,8 @@ pub enum VisitType {
     Grooming,
     Vaksinasi,
     Sterilisasi,
+    /// Inpatient care (hospitalization).
+    Opname,
 }
 
 /// A consultation/examination record. Patient and vet names are denormalized

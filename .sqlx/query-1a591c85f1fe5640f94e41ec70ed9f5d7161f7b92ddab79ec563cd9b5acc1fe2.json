@@ -47,7 +47,8 @@
                 "PHOTO",
                 "XRAY",
                 "LAB",
-                "OTHER"
+                "OTHER",
+                "CONSENT"
               ]
             }
           }
@@ -95,7 +96,8 @@
                 "PHOTO",
                 "XRAY",
                 "LAB",
-                "OTHER"
+                "OTHER",
+                "CONSENT"
               ]
             }
           }

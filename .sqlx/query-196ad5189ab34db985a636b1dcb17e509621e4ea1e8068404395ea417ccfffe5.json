@@ -16,7 +16,8 @@
                 "PERIKSA",
                 "GROOMING",
                 "VAKSINASI",
-                "STERILISASI"
+                "STERILISASI",
+                "OPNAME"
               ]
             }
           }
