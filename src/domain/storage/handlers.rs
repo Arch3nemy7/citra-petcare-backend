@@ -142,10 +142,19 @@ mod tests {
     fn generated_keys_always_pass_validation() {
         // Consecutive dots (double extensions, "scan..final.jpg") must not
         // produce a key that validate_key rejects as path traversal.
-        for name in ["scan..final.jpg", "....", "a..b..c.pdf", "ünïcode.png", "/etc/passwd"] {
+        for name in [
+            "scan..final.jpg",
+            "....",
+            "a..b..c.pdf",
+            "ünïcode.png",
+            "/etc/passwd",
+        ] {
             let key = generate_key(name);
             assert!(!key.contains(".."), "key must not contain '..': {key}");
-            assert!(validate_key(&key).is_ok(), "generated key must validate: {key}");
+            assert!(
+                validate_key(&key).is_ok(),
+                "generated key must validate: {key}"
+            );
         }
     }
 }
