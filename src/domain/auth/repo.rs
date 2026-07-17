@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
-/// Row from `refresh_tokens`, minus the hash (already known to the caller).
+/// Row from `refresh_tokens`, narrowed to what reuse detection needs — the
+/// owner and whether the token was already revoked.
 #[derive(Debug)]
 pub struct RefreshTokenRow {
     pub user_id: Uuid,
-    pub expires_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
@@ -44,7 +44,7 @@ pub async fn find_by_hash(
 ) -> Result<Option<RefreshTokenRow>, AppError> {
     let row = sqlx::query_as!(
         RefreshTokenRow,
-        "SELECT user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1",
+        "SELECT user_id, revoked_at FROM refresh_tokens WHERE token_hash = $1",
         token_hash
     )
     .fetch_optional(db)

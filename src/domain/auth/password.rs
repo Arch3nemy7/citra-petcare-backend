@@ -5,11 +5,41 @@
 //! run on tokio's blocking thread pool — an `.await` on the async runtime
 //! must never block a worker thread for that long.
 
+use std::sync::LazyLock;
+
 use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 
 use crate::error::AppError;
+
+/// Argon2 hash of a throwaway password, verified when an email is unknown so
+/// that "no such user" takes as long as "wrong password" (timing side channel).
+/// Hashed with the same `Argon2::default()` parameters as real passwords, so if
+/// those parameters ever change this dummy tracks them and the two paths stay
+/// indistinguishable in cost.
+static REFERENCE_HASH: LazyLock<String> = LazyLock::new(|| {
+    Argon2::default()
+        .hash_password(
+            b"timing-equalization-dummy",
+            &SaltString::generate(&mut OsRng),
+        )
+        .expect("static argon2 input always hashes")
+        .to_string()
+});
+
+/// A stable Argon2 hash to verify against on the unknown-email login path, so
+/// that lookup costs the same as a real wrong-password verify.
+pub fn reference_hash() -> String {
+    REFERENCE_HASH.clone()
+}
+
+/// Force [`REFERENCE_HASH`] eagerly. Its initializer burns tens of milliseconds
+/// of Argon2 CPU; called from a blocking context at boot so the first
+/// unknown-email login never runs it on an async worker thread.
+pub fn warm_up() {
+    LazyLock::force(&REFERENCE_HASH);
+}
 
 pub async fn hash_password(password: String) -> Result<String, AppError> {
     tokio::task::spawn_blocking(move || {

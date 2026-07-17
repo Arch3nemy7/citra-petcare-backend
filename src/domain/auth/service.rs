@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use chrono::{Duration, Utc};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -22,27 +20,6 @@ pub struct TokenPair {
     pub user: User,
 }
 
-/// Argon2 hash of a throwaway password, verified when the email is unknown so
-/// that "no such user" takes as long as "wrong password" (timing side channel).
-static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
-    use argon2::password_hash::rand_core::OsRng;
-    use argon2::password_hash::{PasswordHasher, SaltString};
-    argon2::Argon2::default()
-        .hash_password(
-            b"timing-equalization-dummy",
-            &SaltString::generate(&mut OsRng),
-        )
-        .expect("static argon2 input always hashes")
-        .to_string()
-});
-
-/// Force [`DUMMY_HASH`] eagerly. Its initializer burns tens of milliseconds
-/// of Argon2 CPU; called from a blocking context at boot so the first
-/// unknown-email login never runs it on an async worker thread.
-pub fn warm_up() {
-    LazyLock::force(&DUMMY_HASH);
-}
-
 pub async fn login(
     db: &PgPool,
     config: &Config,
@@ -50,13 +27,15 @@ pub async fn login(
     pass: &str,
 ) -> Result<TokenPair, AppError> {
     let user = users::repo::find_by_email(db, email).await?;
-    let (hash, user) = match user {
-        Some(user) => (user.password_hash.clone(), Some(user)),
-        None => (DUMMY_HASH.clone(), None),
+    // Verify against a fixed reference hash when the email is unknown, so the
+    // lookup costs the same as a real wrong-password verify (timing side channel).
+    let hash = match &user {
+        Some(user) => user.password_hash.clone(),
+        None => password::reference_hash(),
     };
     let verified = password::verify_password(hash, pass.to_string()).await?;
-    match (user, verified) {
-        (Some(user), true) => issue_pair(db, config, user).await,
+    match user {
+        Some(user) if verified => issue_pair(db, config, user).await,
         _ => Err(AuthError::InvalidCredentials.into()),
     }
 }
@@ -133,7 +112,7 @@ fn generate_refresh_token() -> (String, String) {
     (raw, hash)
 }
 
-pub fn hash_refresh_token(raw: &str) -> String {
+fn hash_refresh_token(raw: &str) -> String {
     hex::encode(Sha256::digest(raw.as_bytes()))
 }
 
