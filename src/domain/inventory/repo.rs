@@ -14,15 +14,6 @@ use crate::error::AppError;
 // its signed qty. It aggregates over the covering partial index
 // stock_movements_item_id_idx, so it stays an index-only scan.
 
-/// Escape LIKE/ILIKE metacharacters so a user's search term matches literally.
-/// Backslash is Postgres's default LIKE escape character, so `%`, `_` and `\`
-/// in the term would otherwise act as wildcards/escapes rather than text.
-fn escape_like(term: &str) -> String {
-    term.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
-
 /// Lock the item row for the rest of the caller's transaction so concurrent
 /// stock writes serialize, returning NotFound (and rolling the transaction back
 /// on drop) when the item is absent or soft-deleted.
@@ -88,7 +79,7 @@ pub async fn list(
     limit: i64,
 ) -> Result<Vec<InventoryItem>, AppError> {
     // Escape LIKE metacharacters so `%`/`_`/`\` in the term match literally.
-    let search = search.map(escape_like);
+    let search = search.map(crate::db::escape_like);
     let rows = sqlx::query_as!(
         InventoryItem,
         r#"

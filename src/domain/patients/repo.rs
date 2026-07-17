@@ -16,6 +16,9 @@ pub async fn list(
     cursor: Option<Uuid>,
     limit: i64,
 ) -> Result<Vec<Patient>, AppError> {
+    // Escape LIKE metacharacters so `%`/`_`/`\` in the term match literally
+    // rather than acting as wildcards across patient name, owner name and phone.
+    let search = search.map(crate::db::escape_like);
     let rows = sqlx::query_as!(
         Patient,
         r#"

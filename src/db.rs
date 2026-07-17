@@ -22,3 +22,12 @@ pub async fn connect(config: &Config) -> Result<PgPool, sqlx::Error> {
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(pool).await
 }
+
+/// Escape LIKE/ILIKE metacharacters so a user's search term matches literally.
+/// Backslash is Postgres's default LIKE escape character, so `%`, `_` and `\`
+/// in the term would otherwise act as wildcards/escapes rather than text.
+pub fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
