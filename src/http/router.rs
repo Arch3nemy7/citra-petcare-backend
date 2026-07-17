@@ -1,15 +1,15 @@
 //! Router assembly: documented /api/v1 routes, ops endpoints, Swagger UI,
 //! and the full tower middleware stack.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{ConnectInfo, DefaultBodyLimit};
 use axum::http::{HeaderValue, Request, header};
 use axum::middleware::{from_fn, from_fn_with_state};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower::ServiceBuilder;
@@ -42,6 +42,15 @@ use crate::state::AppState;
 /// phone then shares its quota with every request relayed through that
 /// edge and trips 429s during ordinary use. Falls back to the standard
 /// headers/peer address for non-Cloudflare traffic (local dev, tests).
+///
+/// SECURITY: CF-Connecting-IP is client-supplied and only trustworthy because
+/// the fronting reverse proxy *overwrites* it with the Cloudflare-validated
+/// `$remote_addr` before proxying (see `proxy_set_header CF-Connecting-IP`
+/// in `deploy/nginx/…conf`), and/or the origin only accepts connections from
+/// Cloudflare IP ranges. Without one of those, a caller reaching the origin
+/// directly could rotate a forged header per request to mint a fresh bucket
+/// and defeat the limiter (including the strict auth bucket). Keep that
+/// sanitization/firewalling in place for every deployment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientIpKeyExtractor;
 
@@ -84,6 +93,19 @@ fn rate_limit_error(err: GovernorError) -> Response {
                 .with_kind("rate-limiter")
                 .into_response()
         }
+    }
+}
+
+/// Peers allowed to scrape `/metrics`: loopback and private-range
+/// (RFC 1918 / IPv6 ULA) addresses — the only sources the in-cluster
+/// Prometheus scraper and host-local tooling ever connect from. Public peers
+/// are refused so a directly-exposed process never leaks Prometheus internals
+/// even if the reverse proxy's own `/metrics` block is missing.
+fn is_trusted_metrics_peer(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+        // fc00::/7 (unique local) plus loopback; `is_unique_local` is unstable.
+        IpAddr::V6(v6) => v6.is_loopback() || (v6.segments()[0] & 0xfe00) == 0xfc00,
     }
 }
 
@@ -173,9 +195,20 @@ pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Route
     if let Some(handle) = metrics {
         app = app.route(
             "/metrics",
-            get(move || {
+            get(move |ConnectInfo(peer): ConnectInfo<SocketAddr>| {
                 let handle = handle.clone();
-                async move { handle.render() }
+                async move {
+                    // Defense in depth: the reverse proxy already blocks public
+                    // /metrics, but never hand Prometheus internals to a public
+                    // peer even if that block is ever missing. The scraper and
+                    // host tooling reach us over loopback/private addresses;
+                    // anything else gets the same 404 as an unknown route.
+                    if is_trusted_metrics_peer(peer.ip()) {
+                        handle.render().into_response()
+                    } else {
+                        ops::not_found().await
+                    }
+                }
             }),
         );
     }

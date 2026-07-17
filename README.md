@@ -270,6 +270,17 @@ nginx overrides (body size, forwarded headers, and a
 `location = /metrics { return 404; }` block) live in
 `vhost.d/be-petcare.holo.my.id` of the nginx-proxy stack.
 
+> **Rate-limiter trust boundary.** The API keys its per-IP rate limiter on
+> `CF-Connecting-IP`, which is client-supplied and only safe once a fronting
+> proxy overwrites it with the Cloudflare-validated address. Ensure the
+> nginx-proxy vhost sets `proxy_set_header CF-Connecting-IP $remote_addr;`
+> (after `set_real_ip_from` for the [Cloudflare IP ranges](https://www.cloudflare.com/ips/)),
+> **and/or** firewall the origin so it only accepts connections from those
+> ranges. Without this, a caller that reaches the origin directly can forge
+> the header to rotate rate-limit buckets and bypass the limiter — including
+> the strict login/refresh bucket. The standalone vhost below already does
+> this; keep it in sync in the nginx-proxy `vhost.d` override.
+
 To deploy on a host **without** nginx-proxy instead: remove `VIRTUAL_HOST`,
 `CERT_NAME` and the `proxy-network` entries from `docker-compose.yml`, then
 use the standalone vhost:
