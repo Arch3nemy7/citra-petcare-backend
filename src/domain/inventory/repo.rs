@@ -5,13 +5,80 @@ use uuid::Uuid;
 use super::InventoryError;
 use super::dto::InventoryItemRequest;
 use super::models::{
-    BatchIn, InventoryCategory, InventoryItem, MovementType, StockMovement, allocate_batches,
+    BatchIn, InventoryCategory, InventoryItem, MovementType, STOCK_EPSILON, StockMovement,
+    allocate_batches, check_qty_sign,
 };
 use crate::error::AppError;
 
 // The "current stock" expression: IN adds, OUT subtracts, ADJUSTMENT applies
 // its signed qty. It aggregates over the covering partial index
 // stock_movements_item_id_idx, so it stays an index-only scan.
+
+/// Escape LIKE/ILIKE metacharacters so a user's search term matches literally.
+/// Backslash is Postgres's default LIKE escape character, so `%`, `_` and `\`
+/// in the term would otherwise act as wildcards/escapes rather than text.
+fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+/// Lock the item row for the rest of the caller's transaction so concurrent
+/// stock writes serialize, returning NotFound (and rolling the transaction back
+/// on drop) when the item is absent or soft-deleted.
+async fn lock_item(conn: &mut sqlx::PgConnection, item_id: Uuid) -> Result<(), AppError> {
+    let locked = sqlx::query_scalar!(
+        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+        item_id
+    )
+    .fetch_optional(&mut *conn)
+    .await?;
+    if locked.is_none() {
+        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
+    }
+    Ok(())
+}
+
+/// Re-derive the item's expiry badge (earliest remaining FEFO batch) from the
+/// ledger and write it, bumping the sync cursor via the update trigger. Returns
+/// `false` without touching the row when the item tracks no expiry-dated
+/// batches — the badge is then client-owned, and the caller decides whether the
+/// ledger change still needs the sync cursor moved.
+async fn refresh_expiry_badge(
+    conn: &mut sqlx::PgConnection,
+    item_id: Uuid,
+) -> Result<bool, AppError> {
+    let batch_ins = batch_ins_for(&mut *conn, item_id).await?;
+    if batch_ins.is_empty() {
+        return Ok(false);
+    }
+    let consumed = consumed_total(&mut *conn, item_id).await?;
+    let next_expiry = allocate_batches(batch_ins, consumed)
+        .first()
+        .map(|batch| batch.expiry_date);
+    sqlx::query!(
+        "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
+        item_id,
+        next_expiry
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(true)
+}
+
+/// Move the item's sync cursor (`updated_at`, via the update trigger) without
+/// altering any other field — used when a ledger write leaves the item row
+/// otherwise untouched (an item with no expiry-dated batches), so
+/// `/sync/changes` still re-emits the item with its freshly-derived stock.
+async fn touch_item(conn: &mut sqlx::PgConnection, item_id: Uuid) -> Result<(), AppError> {
+    sqlx::query!(
+        "UPDATE inventory_items SET updated_at = now() WHERE id = $1",
+        item_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
 
 pub async fn list(
     db: &PgPool,
@@ -20,6 +87,8 @@ pub async fn list(
     cursor: Option<Uuid>,
     limit: i64,
 ) -> Result<Vec<InventoryItem>, AppError> {
+    // Escape LIKE metacharacters so `%`/`_`/`\` in the term match literally.
+    let search = search.map(escape_like);
     let rows = sqlx::query_as!(
         InventoryItem,
         r#"
@@ -28,13 +97,11 @@ pub async fn list(
                COALESCE(m.stock, 0) AS "current_stock!",
                i.created_at, i.updated_at
         FROM inventory_items i
-        LEFT JOIN (
-            SELECT item_id,
-                   SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock
+        LEFT JOIN LATERAL (
+            SELECT SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock
             FROM stock_movements
-            WHERE deleted_at IS NULL
-            GROUP BY item_id
-        ) m ON m.item_id = i.id
+            WHERE item_id = i.id AND deleted_at IS NULL
+        ) m ON true
         WHERE i.deleted_at IS NULL
           AND ($1::text IS NULL OR i.name ILIKE '%' || $1 || '%')
           AND ($2::inventory_category IS NULL OR i.category = $2)
@@ -52,7 +119,10 @@ pub async fn list(
     Ok(rows)
 }
 
-pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<InventoryItem>, AppError> {
+pub async fn find<'e>(
+    executor: impl PgExecutor<'e>,
+    id: Uuid,
+) -> Result<Option<InventoryItem>, AppError> {
     let item = sqlx::query_as!(
         InventoryItem,
         r#"
@@ -72,7 +142,7 @@ pub async fn find(db: &PgPool, id: Uuid) -> Result<Option<InventoryItem>, AppErr
         "#,
         id
     )
-    .fetch_optional(db)
+    .fetch_optional(executor)
     .await?;
     Ok(item)
 }
@@ -97,6 +167,7 @@ pub async fn insert(db: &PgPool, id: Uuid, input: &InventoryItemRequest) -> Resu
 }
 
 pub async fn upsert(db: &PgPool, id: Uuid, input: &InventoryItemRequest) -> Result<(), AppError> {
+    let mut tx = db.begin().await?;
     sqlx::query!(
         r#"
         INSERT INTO inventory_items (id, name, category, unit, min_stock, expiry_date, photo_keys)
@@ -118,8 +189,13 @@ pub async fn upsert(db: &PgPool, id: Uuid, input: &InventoryItemRequest) -> Resu
         input.expiry_date,
         &input.photo_keys
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+    // Upserting a full representation may resurrect or edit an item that already
+    // tracks batches; there the client-sent expiry_date is not authoritative, so
+    // re-derive the badge from the ledger rather than let the payload clobber it.
+    refresh_expiry_badge(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -222,16 +298,7 @@ pub async fn record_movement(
     lot_no: Option<&str>,
 ) -> Result<(StockMovement, f64), AppError> {
     let mut tx = db.begin().await?;
-
-    let locked = sqlx::query_scalar!(
-        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
-        item_id
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-    if locked.is_none() {
-        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
-    }
+    lock_item(&mut tx, item_id).await?;
 
     let current: f64 = sqlx::query_scalar!(
         r#"
@@ -245,13 +312,8 @@ pub async fn record_movement(
     .fetch_one(&mut *tx)
     .await?;
 
-    let delta = match movement_type {
-        MovementType::In => qty,
-        MovementType::Out => -qty,
-        MovementType::Adjustment => qty,
-    };
-    let new_stock = current + delta;
-    if new_stock < 0.0 {
+    let new_stock = current + movement_type.signed(qty);
+    if new_stock < -STOCK_EPSILON {
         return Err(InventoryError::InsufficientStock {
             requested: qty.abs(),
             available: current,
@@ -279,19 +341,11 @@ pub async fn record_movement(
     .fetch_one(&mut *tx)
     .await?;
 
-    let batch_ins = batch_ins_for(&mut *tx, item_id).await?;
-    if !batch_ins.is_empty() {
-        let consumed = consumed_total(&mut *tx, item_id).await?;
-        let next_expiry = allocate_batches(batch_ins, consumed)
-            .first()
-            .map(|batch| batch.expiry_date);
-        sqlx::query!(
-            "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
-            item_id,
-            next_expiry
-        )
-        .execute(&mut *tx)
-        .await?;
+    if !refresh_expiry_badge(&mut tx, item_id).await? {
+        // No expiry-dated batches to re-derive a badge from, so the ledger write
+        // left the item row untouched; bump its sync cursor explicitly so
+        // /sync/changes re-emits the item with its new derived stock.
+        touch_item(&mut tx, item_id).await?;
     }
 
     tx.commit().await?;
@@ -311,16 +365,7 @@ pub async fn update_movement_qty(
     qty: f64,
 ) -> Result<(StockMovement, f64), AppError> {
     let mut tx = db.begin().await?;
-
-    let locked = sqlx::query_scalar!(
-        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
-        item_id
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-    if locked.is_none() {
-        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
-    }
+    lock_item(&mut tx, item_id).await?;
 
     let existing = sqlx::query!(
         r#"
@@ -338,21 +383,7 @@ pub async fn update_movement_qty(
     if existing.visit_id.is_some() {
         return Err(InventoryError::VisitLinkedMovement.into());
     }
-    match existing.movement_type {
-        MovementType::In | MovementType::Out if qty <= 0.0 => {
-            return Err(InventoryError::InvalidQuantity(
-                "qty must be positive for IN/OUT movements".to_string(),
-            )
-            .into());
-        }
-        MovementType::Adjustment if qty == 0.0 => {
-            return Err(InventoryError::InvalidQuantity(
-                "qty must be non-zero for an ADJUSTMENT".to_string(),
-            )
-            .into());
-        }
-        _ => {}
-    }
+    check_qty_sign(existing.movement_type, qty)?;
 
     let current: f64 = sqlx::query_scalar!(
         r#"
@@ -366,14 +397,9 @@ pub async fn update_movement_qty(
     .fetch_one(&mut *tx)
     .await?;
 
-    let delta_of = |q: f64| match existing.movement_type {
-        MovementType::In => q,
-        MovementType::Out => -q,
-        MovementType::Adjustment => q,
-    };
-    let without_entry = current - delta_of(existing.qty);
-    let new_stock = without_entry + delta_of(qty);
-    if new_stock < 0.0 {
+    let without_entry = current - existing.movement_type.signed(existing.qty);
+    let new_stock = without_entry + existing.movement_type.signed(qty);
+    if new_stock < -STOCK_EPSILON {
         return Err(InventoryError::InsufficientStock {
             requested: qty.abs(),
             available: without_entry,
@@ -397,19 +423,11 @@ pub async fn update_movement_qty(
     .fetch_one(&mut *tx)
     .await?;
 
-    let batch_ins = batch_ins_for(&mut *tx, item_id).await?;
-    if !batch_ins.is_empty() {
-        let consumed = consumed_total(&mut *tx, item_id).await?;
-        let next_expiry = allocate_batches(batch_ins, consumed)
-            .first()
-            .map(|batch| batch.expiry_date);
-        sqlx::query!(
-            "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
-            item_id,
-            next_expiry
-        )
-        .execute(&mut *tx)
-        .await?;
+    if !refresh_expiry_badge(&mut tx, item_id).await? {
+        // No expiry-dated batches to re-derive a badge from, so the ledger write
+        // left the item row untouched; bump its sync cursor explicitly so
+        // /sync/changes re-emits the item with its new derived stock.
+        touch_item(&mut tx, item_id).await?;
     }
 
     tx.commit().await?;
@@ -429,15 +447,29 @@ pub async fn redate_batch(
     new_expiry_date: NaiveDate,
 ) -> Result<bool, AppError> {
     let mut tx = db.begin().await?;
+    lock_item(&mut tx, item_id).await?;
 
-    let locked = sqlx::query_scalar!(
-        "SELECT id FROM inventory_items WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
-        item_id
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-    if locked.is_none() {
-        return Err(AppError::NotFound("inventory item")); // dropping tx rolls back
+    // Re-dating a batch onto another batch's (expiry, lot) key would merge two
+    // physically distinct lots irreversibly. Reject that, unless the target date
+    // equals the source (a no-op that can only match the batch itself).
+    if new_expiry_date != expiry_date {
+        let collides = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM stock_movements
+                WHERE item_id = $1 AND deleted_at IS NULL AND type = 'IN'
+                  AND expiry_date = $2 AND lot_no IS NOT DISTINCT FROM $3
+            ) AS "exists!"
+            "#,
+            item_id,
+            new_expiry_date,
+            lot_no
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if collides {
+            return Err(InventoryError::BatchConflict.into());
+        }
     }
 
     let updated = sqlx::query!(
@@ -458,20 +490,9 @@ pub async fn redate_batch(
         return Ok(false);
     }
 
-    // At least one expiry-dated stock-in exists (we just re-dated it), so
-    // the badge refresh always has batches to allocate.
-    let batch_ins = batch_ins_for(&mut *tx, item_id).await?;
-    let consumed = consumed_total(&mut *tx, item_id).await?;
-    let next_expiry = allocate_batches(batch_ins, consumed)
-        .first()
-        .map(|batch| batch.expiry_date);
-    sqlx::query!(
-        "UPDATE inventory_items SET expiry_date = $2 WHERE id = $1",
-        item_id,
-        next_expiry
-    )
-    .execute(&mut *tx)
-    .await?;
+    // At least one expiry-dated stock-in exists (we just re-dated it), so the
+    // badge refresh always has a batch to allocate and touches the row.
+    refresh_expiry_badge(&mut tx, item_id).await?;
 
     tx.commit().await?;
     Ok(true)

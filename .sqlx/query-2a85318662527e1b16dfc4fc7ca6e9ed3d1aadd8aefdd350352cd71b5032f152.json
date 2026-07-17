@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT i.id, i.name, i.category AS \"category: InventoryCategory\", i.unit,\n               i.min_stock, i.expiry_date, i.photo_keys,\n               COALESCE(m.stock, 0) AS \"current_stock!\",\n               i.created_at, i.updated_at\n        FROM inventory_items i\n        LEFT JOIN (\n            SELECT item_id,\n                   SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock\n            FROM stock_movements\n            WHERE deleted_at IS NULL\n            GROUP BY item_id\n        ) m ON m.item_id = i.id\n        WHERE i.deleted_at IS NULL\n          AND ($1::text IS NULL OR i.name ILIKE '%' || $1 || '%')\n          AND ($2::inventory_category IS NULL OR i.category = $2)\n          AND ($3::uuid IS NULL OR i.id < $3)\n        ORDER BY i.id DESC\n        LIMIT $4\n        ",
+  "query": "\n        SELECT i.id, i.name, i.category AS \"category: InventoryCategory\", i.unit,\n               i.min_stock, i.expiry_date, i.photo_keys,\n               COALESCE(m.stock, 0) AS \"current_stock!\",\n               i.created_at, i.updated_at\n        FROM inventory_items i\n        LEFT JOIN LATERAL (\n            SELECT SUM(CASE type WHEN 'IN' THEN qty WHEN 'OUT' THEN -qty ELSE qty END) AS stock\n            FROM stock_movements\n            WHERE item_id = i.id AND deleted_at IS NULL\n        ) m ON true\n        WHERE i.deleted_at IS NULL\n          AND ($1::text IS NULL OR i.name ILIKE '%' || $1 || '%')\n          AND ($2::inventory_category IS NULL OR i.category = $2)\n          AND ($3::uuid IS NULL OR i.id < $3)\n        ORDER BY i.id DESC\n        LIMIT $4\n        ",
   "describe": {
     "columns": [
       {
@@ -152,5 +152,5 @@
       false
     ]
   },
-  "hash": "5d1ae9e517fe249eaf789e340979ca6e559f348900c1c4b4b8ff9da8aafa51c7"
+  "hash": "2a85318662527e1b16dfc4fc7ca6e9ed3d1aadd8aefdd350352cd71b5032f152"
 }

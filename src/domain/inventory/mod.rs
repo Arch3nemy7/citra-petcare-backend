@@ -13,4 +13,8 @@ pub enum InventoryError {
     InvalidQuantity(String),
     #[error("this movement was recorded by a visit; correct it from the visit instead")]
     VisitLinkedMovement,
+    #[error(
+        "a batch with the target expiry date and lot already exists; merging batches is not supported"
+    )]
+    BatchConflict,
 }

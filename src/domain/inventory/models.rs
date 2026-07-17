@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::InventoryError;
+
+/// Stock quantities are `double precision`, so derived sums carry floating-point
+/// residue (0.3 - 0.1 - 0.2 lands at -2.8e-17, not 0). Compare against this
+/// tolerance instead of exact zero so genuinely-empty ledgers read as empty and
+/// exact-drain movements are not spuriously rejected. It sits far below any real
+/// quantity yet far above accumulated `f64` dust.
+pub const STOCK_EPSILON: f64 = 1e-6;
+
+/// Upper bound on a single movement's magnitude. Guards the derived stock sum
+/// against `float8` overflow (two near-`f64::MAX` movements would make every
+/// subsequent SUM error out and 500 the item) while staying absurdly high for a
+/// two-vet clinic.
+pub const MAX_QTY: f64 = 1e9;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "inventory_category", rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -19,6 +34,35 @@ pub enum MovementType {
     In,
     Out,
     Adjustment,
+}
+
+impl MovementType {
+    /// The signed contribution of `qty` to derived stock: IN adds, OUT
+    /// subtracts, ADJUSTMENT applies its already-signed value. This is the
+    /// Rust mirror of the `CASE type ...` expression the stock queries use.
+    pub fn signed(self, qty: f64) -> f64 {
+        match self {
+            MovementType::In => qty,
+            MovementType::Out => -qty,
+            MovementType::Adjustment => qty,
+        }
+    }
+}
+
+/// Sign rules shared by recording a movement and correcting its quantity:
+/// IN/OUT quantities must be positive; an ADJUSTMENT must be non-zero (it may
+/// be signed). Mirrors the `stock_movements_qty_check` DB constraint with a
+/// friendlier message.
+pub fn check_qty_sign(movement_type: MovementType, qty: f64) -> Result<(), InventoryError> {
+    match movement_type {
+        MovementType::In | MovementType::Out if qty <= 0.0 => Err(InventoryError::InvalidQuantity(
+            "qty must be positive for IN/OUT movements".to_string(),
+        )),
+        MovementType::Adjustment if qty == 0.0 => Err(InventoryError::InvalidQuantity(
+            "qty must be non-zero for an ADJUSTMENT".to_string(),
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// An inventory item. `current_stock` is never stored — every read derives it
@@ -84,7 +128,7 @@ pub fn allocate_batches(batches: Vec<BatchIn>, consumed: f64) -> Vec<StockBatch>
         let used = left.min(batch.qty);
         left -= used;
         let qty_remaining = batch.qty - used;
-        if qty_remaining > 0.0 {
+        if qty_remaining > STOCK_EPSILON {
             remaining.push(StockBatch {
                 lot_no: batch.lot_no,
                 expiry_date: batch.expiry_date,
@@ -133,5 +177,17 @@ mod tests {
     fn overconsumption_beyond_batches_yields_empty() {
         let remaining = allocate_batches(vec![batch("A", "2026-08-30", 6.0)], 10.0);
         assert!(remaining.is_empty());
+    }
+
+    #[test]
+    fn floating_point_dust_does_not_survive_as_a_phantom_batch() {
+        // IN 0.1 + IN 0.2, then OUT 0.3 nets to exactly zero, but f64 leaves
+        // ~2.8e-17 in the last batch. An exact-zero check would keep it and pin
+        // the item's expiry badge to a drained lot; the epsilon must drop it.
+        let remaining = allocate_batches(
+            vec![batch("A", "2026-08-30", 0.1), batch("B", "2027-01-14", 0.2)],
+            0.3,
+        );
+        assert!(remaining.is_empty(), "dust batch survived: {remaining:?}");
     }
 }

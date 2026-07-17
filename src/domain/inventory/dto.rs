@@ -4,7 +4,9 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-use super::models::{InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement};
+use super::models::{
+    InventoryCategory, InventoryItem, MAX_QTY, MovementType, StockBatch, StockMovement,
+};
 
 /// Body for both POST (create) and PUT (idempotent upsert).
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -34,6 +36,17 @@ fn validate_photo_keys(keys: &[String]) -> Result<(), validator::ValidationError
     if keys.iter().any(|k| k.is_empty() || k.len() > 500) {
         return Err(validator::ValidationError::new("photo_keys")
             .with_message("each photo key must be 1–500 characters".into()));
+    }
+    Ok(())
+}
+
+/// Reject non-finite or absurdly large quantities before they reach the ledger:
+/// an unbounded value overflows the derived-stock `float8` SUM and permanently
+/// 500s every read of the item.
+fn validate_qty_magnitude(qty: f64) -> Result<(), validator::ValidationError> {
+    if !qty.is_finite() || qty.abs() > MAX_QTY {
+        return Err(validator::ValidationError::new("qty")
+            .with_message("qty must be a finite number within ±1e9".into()));
     }
     Ok(())
 }
@@ -124,6 +137,7 @@ pub struct MovementRequest {
     #[serde(rename = "type")]
     pub movement_type: MovementType,
     /// Positive for IN/OUT; ADJUSTMENT accepts a signed delta.
+    #[validate(custom(function = "validate_qty_magnitude"))]
     pub qty: f64,
     #[validate(length(max = 500))]
     #[schema(example = "Pembelian dari supplier")]
@@ -147,6 +161,7 @@ pub struct MovementRequest {
 #[serde(rename_all = "camelCase")]
 pub struct MovementUpdateRequest {
     /// Positive for IN/OUT; ADJUSTMENT accepts a signed delta.
+    #[validate(custom(function = "validate_qty_magnitude"))]
     pub qty: f64,
 }
 

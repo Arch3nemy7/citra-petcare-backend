@@ -90,6 +90,7 @@ impl AppError {
             Self::Validation(_) => "validation",
             Self::Inventory(InventoryError::InsufficientStock { .. }) => "insufficient-stock",
             Self::Inventory(InventoryError::VisitLinkedMovement) => "visit-linked-movement",
+            Self::Inventory(InventoryError::BatchConflict) => "batch-conflict",
             Self::Inventory(_) => "invalid-quantity",
             Self::Storage(_) => "storage",
             Self::Notify(_) => "notification",

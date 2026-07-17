@@ -5,9 +5,9 @@ use super::dto::{
     BatchUpdateRequest, InventoryItemRequest, MovementRequest, MovementUpdateRequest,
 };
 use super::models::{
-    InventoryCategory, InventoryItem, MovementType, StockBatch, StockMovement, allocate_batches,
+    InventoryCategory, InventoryItem, StockBatch, StockMovement, allocate_batches, check_qty_sign,
 };
-use super::{InventoryError, repo};
+use super::repo;
 use crate::error::AppError;
 use crate::http::pagination::Paginated;
 
@@ -34,13 +34,23 @@ pub async fn get_detail(
     db: &PgPool,
     id: Uuid,
 ) -> Result<(InventoryItem, Vec<StockBatch>), AppError> {
-    let item = get(db, id).await?;
-    let batch_ins = repo::batch_ins_for(db, id).await?;
+    // Read the item, its batch-ins and its consumption from one REPEATABLE READ
+    // snapshot so the returned stock level can't contradict the derived batches
+    // when a movement commits mid-read.
+    let mut tx = db.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        .execute(&mut *tx)
+        .await?;
+    let item = repo::find(&mut *tx, id)
+        .await?
+        .ok_or(AppError::NotFound("inventory item"))?;
+    let batch_ins = repo::batch_ins_for(&mut *tx, id).await?;
     let batches = if batch_ins.is_empty() {
         Vec::new()
     } else {
-        allocate_batches(batch_ins, repo::consumed_total(db, id).await?)
+        allocate_batches(batch_ins, repo::consumed_total(&mut *tx, id).await?)
     };
+    tx.commit().await?;
     Ok((item, batches))
 }
 
@@ -107,21 +117,7 @@ pub async fn record_movement(
     item_id: Uuid,
     input: &MovementRequest,
 ) -> Result<(StockMovement, f64), AppError> {
-    match input.movement_type {
-        MovementType::In | MovementType::Out if input.qty <= 0.0 => {
-            return Err(InventoryError::InvalidQuantity(
-                "qty must be positive for IN/OUT movements".to_string(),
-            )
-            .into());
-        }
-        MovementType::Adjustment if input.qty == 0.0 => {
-            return Err(InventoryError::InvalidQuantity(
-                "qty must be non-zero for an ADJUSTMENT".to_string(),
-            )
-            .into());
-        }
-        _ => {}
-    }
+    check_qty_sign(input.movement_type, input.qty)?;
     let id = input.id.unwrap_or_else(Uuid::now_v7);
     repo::record_movement(
         db,
