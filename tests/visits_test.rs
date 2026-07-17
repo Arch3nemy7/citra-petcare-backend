@@ -90,20 +90,17 @@ async fn opname_visit_carries_a_consent_attachment() {
 #[tokio::test]
 async fn unknown_visit_type_is_rejected() {
     let (app, token) = spawn_logged_in().await;
-    let owner_id = create_owner(&app.router, &token, "Dewi").await;
-    let patient_id = create_patient(&app.router, &token, owner_id, "Bruno").await;
 
-    let (_, me) = request(&app.router, "GET", "/api/v1/users/me", Some(&token), None).await;
-    let vet_id = me["id"].as_str().unwrap();
-
+    // the unknown variant is rejected while deserializing the body, before
+    // any patient/vet lookup — random ids suffice
     let (status, _) = request(
         &app.router,
         "POST",
         "/api/v1/visits",
         Some(&token),
         Some(json!({
-            "patientId": patient_id,
-            "vetId": vet_id,
+            "patientId": Uuid::now_v7(),
+            "vetId": Uuid::now_v7(),
             "visitType": "RAWAT_JALAN",
             "visitDate": chrono::Utc::now(),
             "complaint": "X",

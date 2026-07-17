@@ -20,7 +20,7 @@ pub enum AttachmentKind {
 }
 
 /// What kind of visit was recorded. Grooming visits skip the medical fields
-/// in the app; the other four follow the full anamnesis → exam → diagnosis
+/// in the app; the others follow the full anamnesis → exam → diagnosis
 /// flow. Sterilisasi and Opname additionally carry a CONSENT attachment
 /// (the owner's signed approval).
 #[derive(
