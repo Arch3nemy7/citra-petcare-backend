@@ -6,6 +6,7 @@ use uuid::Uuid;
 use super::AuthError;
 use crate::config::Config;
 use crate::domain::users::models::{User, UserRole};
+use crate::error::AppError;
 
 pub const ISSUER: &str = "citra-petcare";
 
@@ -26,7 +27,7 @@ pub struct Claims {
     pub jti: Uuid,
 }
 
-pub fn encode_access_token(user: &User, config: &Config) -> Result<String, AuthError> {
+pub fn encode_access_token(user: &User, config: &Config) -> Result<String, AppError> {
     let now = Utc::now();
     let claims = Claims {
         sub: user.id,
@@ -42,7 +43,7 @@ pub fn encode_access_token(user: &User, config: &Config) -> Result<String, AuthE
         &claims,
         &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
     )
-    .map_err(|e| AuthError::Internal(format!("failed to sign access token: {e}")))
+    .map_err(|e| AppError::Internal(format!("failed to sign access token: {e}")))
 }
 
 pub fn decode_access_token(token: &str, config: &Config) -> Result<Claims, AuthError> {

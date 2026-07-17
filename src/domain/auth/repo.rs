@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -7,14 +7,20 @@ use crate::error::AppError;
 /// Row from `refresh_tokens`, minus the hash (already known to the caller).
 #[derive(Debug)]
 pub struct RefreshTokenRow {
-    pub id: Uuid,
     pub user_id: Uuid,
     pub expires_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
+/// Result of successfully claiming a token via [`claim_by_hash`].
+#[derive(Debug)]
+pub struct ClaimedToken {
+    pub user_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+}
+
 pub async fn insert(
-    db: &PgPool,
+    db: impl PgExecutor<'_>,
     id: Uuid,
     user_id: Uuid,
     token_hash: &str,
@@ -38,7 +44,7 @@ pub async fn find_by_hash(
 ) -> Result<Option<RefreshTokenRow>, AppError> {
     let row = sqlx::query_as!(
         RefreshTokenRow,
-        "SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1",
+        "SELECT user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1",
         token_hash
     )
     .fetch_optional(db)
@@ -46,10 +52,30 @@ pub async fn find_by_hash(
     Ok(row)
 }
 
-pub async fn revoke(db: &PgPool, id: Uuid) -> Result<(), AppError> {
+/// Atomically consume a live token: set `revoked_at` and return the owner and
+/// expiry. The conditional UPDATE guarantees that of any concurrent
+/// presentations of the same token exactly one gets `Some` — the losers see
+/// `None`, which callers treat as the reuse/theft signal.
+pub async fn claim_by_hash(
+    db: impl PgExecutor<'_>,
+    token_hash: &str,
+) -> Result<Option<ClaimedToken>, AppError> {
+    let row = sqlx::query_as!(
+        ClaimedToken,
+        "UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING user_id, expires_at",
+        token_hash
+    )
+    .fetch_optional(db)
+    .await?;
+    Ok(row)
+}
+
+/// Revoke whatever live token matches the hash. Idempotent by construction:
+/// unknown or already-revoked tokens match zero rows.
+pub async fn revoke_by_hash(db: &PgPool, token_hash: &str) -> Result<(), AppError> {
     sqlx::query!(
-        "UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
-        id
+        "UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL",
+        token_hash
     )
     .execute(db)
     .await?;

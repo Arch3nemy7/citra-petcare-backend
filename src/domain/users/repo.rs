@@ -1,10 +1,10 @@
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
 use uuid::Uuid;
 
 use super::models::{User, UserRole};
 use crate::error::AppError;
 
-pub async fn find_by_id(db: &PgPool, id: Uuid) -> Result<Option<User>, AppError> {
+pub async fn find_by_id(db: impl PgExecutor<'_>, id: Uuid) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as!(
         User,
         r#"

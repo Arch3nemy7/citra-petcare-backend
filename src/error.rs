@@ -62,7 +62,6 @@ impl AppError {
             Self::Unprocessable(_) | Self::Validation(_) | Self::Inventory(_) => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            Self::Auth(AuthError::Internal(_)) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(_) => StatusCode::UNAUTHORIZED,
             Self::Storage(err) => match err {
                 StorageError::InvalidKey(_) => StatusCode::BAD_REQUEST,
@@ -168,10 +167,6 @@ mod tests {
         assert_eq!(
             response_for(AppError::Auth(AuthError::InvalidCredentials)).status(),
             StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(
-            response_for(AppError::Auth(AuthError::Internal("boom".into()))).status(),
-            StatusCode::INTERNAL_SERVER_ERROR
         );
         assert_eq!(
             response_for(AppError::Inventory(InventoryError::InsufficientStock {

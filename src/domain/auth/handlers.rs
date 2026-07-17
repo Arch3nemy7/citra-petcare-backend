@@ -5,7 +5,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::dto::{LoginRequest, LogoutRequest, RefreshRequest, TokenResponse};
-use super::{AuthUser, service};
+use super::service;
 use crate::error::AppError;
 use crate::http::extract::ValidatedJson;
 use crate::http::problem::ProblemDetails;
@@ -47,6 +47,7 @@ pub async fn login(
     responses(
         (status = 200, description = "Rotated", body = TokenResponse),
         (status = 401, description = "Refresh token invalid, expired, or reused", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 422, description = "Validation failed", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub async fn refresh(
@@ -57,23 +58,22 @@ pub async fn refresh(
     Ok(Json(pair.into()))
 }
 
-/// Revoke a refresh token (the access token simply expires).
+/// Revoke a refresh token (the access token simply expires). Possession of
+/// the refresh token is the proof of ownership — no access token required,
+/// so a device idle past the access-token TTL can still end its session.
 #[utoipa::path(
     post,
     path = "/api/v1/auth/logout",
     tag = "auth",
     request_body = LogoutRequest,
     responses(
-        (status = 204, description = "Token revoked (idempotent)"),
-        (status = 401, description = "Not authenticated", body = ProblemDetails, content_type = "application/problem+json"),
-    ),
-    security(("bearerAuth" = []))
+        (status = 204, description = "Token revoked (idempotent: unknown or malformed tokens also yield 204)"),
+    )
 )]
 pub async fn logout(
     State(state): State<AppState>,
-    user: AuthUser,
     ValidatedJson(body): ValidatedJson<LogoutRequest>,
 ) -> Result<StatusCode, AppError> {
-    service::logout(&state.db, user.id, &body.refresh_token).await?;
+    service::logout(&state.db, &body.refresh_token).await?;
     Ok(StatusCode::NO_CONTENT)
 }

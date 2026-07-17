@@ -8,7 +8,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Request, header};
-use axum::middleware::from_fn;
+use axum::middleware::{from_fn, from_fn_with_state};
 use axum::response::Response;
 use axum::routing::get;
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -108,6 +108,11 @@ pub fn build_router(state: AppState, metrics: Option<PrometheusHandle>) -> Route
         .merge(storage::handlers::router())
         .merge(sync::handlers::router())
         .split_for_parts();
+    // Default-on authentication: every route above requires a valid bearer
+    // token via this router-level guard — a handler cannot opt out by
+    // forgetting an AuthUser parameter. Only auth_api below (login/refresh/
+    // logout), the HMAC-signed storage routes, and ops endpoints are public.
+    let api = api.route_layer(from_fn_with_state(state.clone(), auth::require_auth));
     let (auth_api, auth_doc) = OpenApiRouter::new()
         .merge(auth::handlers::router())
         .split_for_parts();

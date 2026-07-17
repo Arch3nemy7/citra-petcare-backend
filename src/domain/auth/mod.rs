@@ -6,11 +6,12 @@ pub mod password;
 pub mod repo;
 pub mod service;
 
-pub use extractor::AuthUser;
+pub use extractor::{AuthUser, require_auth};
 
-/// Auth domain errors. Every user-facing variant maps to 401 so responses
-/// never reveal whether the email exists, the password was wrong, or a token
-/// was merely expired.
+/// Auth domain errors. Every variant maps to 401 so responses never reveal
+/// whether the email exists, the password was wrong, or a token was merely
+/// expired. Infrastructure failures (hashing, signing) are `AppError::Internal`,
+/// never an auth variant, so the 401 mapping stays total.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
     #[error("invalid email or password")]
@@ -21,6 +22,4 @@ pub enum AuthError {
     InvalidToken,
     #[error("refresh token is invalid, expired, or revoked")]
     InvalidRefreshToken,
-    #[error("internal auth error: {0}")]
-    Internal(String),
 }

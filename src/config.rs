@@ -179,15 +179,22 @@ impl Config {
         {
             p.push("JWT_SECRET must be at least 32 characters (openssl rand -hex 32)");
         }
+        // TTL upper bounds keep `now + Duration` far away from chrono's
+        // panic range — a fat-fingered TTL must fail at boot, not turn every
+        // login into a 500.
         let access_token_ttl_secs: i64 =
             p.or_default("ACCESS_TOKEN_TTL_SECS", &raw.access_token_ttl_secs, 900);
         if access_token_ttl_secs <= 0 {
             p.push("ACCESS_TOKEN_TTL_SECS must be positive");
+        } else if access_token_ttl_secs > 31_536_000 {
+            p.push("ACCESS_TOKEN_TTL_SECS must be at most 31536000 (1 year)");
         }
         let refresh_token_ttl_days: i64 =
             p.or_default("REFRESH_TOKEN_TTL_DAYS", &raw.refresh_token_ttl_days, 30);
         if refresh_token_ttl_days <= 0 {
             p.push("REFRESH_TOKEN_TTL_DAYS must be positive");
+        } else if refresh_token_ttl_days > 3650 {
+            p.push("REFRESH_TOKEN_TTL_DAYS must be at most 3650 (10 years)");
         }
 
         let cors_allowed_origins: Vec<String> = raw
@@ -503,6 +510,23 @@ mod tests {
         assert!(
             err.problems.len() >= 7,
             "expected all problems collected, got: {text}"
+        );
+    }
+
+    #[test]
+    fn ttl_upper_bounds_are_enforced() {
+        let mut raw = minimal_raw();
+        raw.access_token_ttl_secs = Some("9223372036854775".to_string());
+        raw.refresh_token_ttl_days = Some("99999".to_string());
+        let err = Config::from_raw(raw).expect_err("oversized TTLs must be rejected");
+        let text = err.to_string();
+        assert!(
+            text.contains("ACCESS_TOKEN_TTL_SECS must be at most"),
+            "{text}"
+        );
+        assert!(
+            text.contains("REFRESH_TOKEN_TTL_DAYS must be at most"),
+            "{text}"
         );
     }
 

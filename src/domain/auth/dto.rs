@@ -27,8 +27,9 @@ pub struct RefreshRequest {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LogoutRequest {
-    /// The refresh token to revoke.
-    #[validate(length(equal = 64))]
+    /// The refresh token to revoke. Deliberately not format-validated:
+    /// logout is idempotent and must never fail, even when a client presents
+    /// a truncated or corrupted stored token.
     pub refresh_token: String,
 }
 

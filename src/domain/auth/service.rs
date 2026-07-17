@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use chrono::{Duration, Utc};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
 use uuid::Uuid;
 
 use super::{AuthError, jwt, password, repo};
@@ -36,6 +36,13 @@ static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
         .to_string()
 });
 
+/// Force [`DUMMY_HASH`] eagerly. Its initializer burns tens of milliseconds
+/// of Argon2 CPU; called from a blocking context at boot so the first
+/// unknown-email login never runs it on an async worker thread.
+pub fn warm_up() {
+    LazyLock::force(&DUMMY_HASH);
+}
+
 pub async fn login(
     db: &PgPool,
     config: &Config,
@@ -57,39 +64,54 @@ pub async fn login(
 /// Rotate a refresh token: the presented token is revoked and a new pair is
 /// issued. Presenting an already-revoked token is treated as theft (someone
 /// replayed a rotated token) and kills every session of that user.
+///
+/// Claim and replacement run in one transaction: the claim is an atomic
+/// conditional UPDATE, so of any concurrent presentations exactly one wins
+/// and the losers hit the theft path — and if signing or the insert fails
+/// before commit, the claim rolls back and the client's token stays usable
+/// (a transient error must not burn the only token the client has).
 pub async fn refresh(db: &PgPool, config: &Config, raw_token: &str) -> Result<TokenPair, AppError> {
     let token_hash = hash_refresh_token(raw_token);
-    let Some(row) = repo::find_by_hash(db, &token_hash).await? else {
+    let mut tx = db.begin().await?;
+    let Some(claimed) = repo::claim_by_hash(&mut *tx, &token_hash).await? else {
+        drop(tx);
+        // Unknown hash → plain 401. Known but already revoked → reuse.
+        if let Some(row) = repo::find_by_hash(db, &token_hash).await?
+            && row.revoked_at.is_some()
+        {
+            let revoked = repo::revoke_all_for_user(db, row.user_id).await?;
+            tracing::warn!(user_id = %row.user_id, revoked, "refresh token reuse detected; all sessions revoked");
+        }
         return Err(AuthError::InvalidRefreshToken.into());
     };
-    if row.revoked_at.is_some() {
-        let revoked = repo::revoke_all_for_user(db, row.user_id).await?;
-        tracing::warn!(user_id = %row.user_id, revoked, "refresh token reuse detected; all sessions revoked");
+    if claimed.expires_at <= Utc::now() {
+        // Expired: drop the transaction so the claim rolls back — replaying
+        // an expired token stays a plain 401 rather than tripping theft
+        // detection, matching the pre-claim behavior.
         return Err(AuthError::InvalidRefreshToken.into());
     }
-    if row.expires_at <= Utc::now() {
-        return Err(AuthError::InvalidRefreshToken.into());
-    }
-    let Some(user) = users::repo::find_by_id(db, row.user_id).await? else {
+    let Some(user) = users::repo::find_by_id(&mut *tx, claimed.user_id).await? else {
         return Err(AuthError::InvalidRefreshToken.into());
     };
-    repo::revoke(db, row.id).await?;
-    issue_pair(db, config, user).await
+    let pair = issue_pair(&mut *tx, config, user).await?;
+    tx.commit().await?;
+    Ok(pair)
 }
 
-/// Revoke one refresh token. Idempotent: unknown or foreign tokens are
-/// silently ignored so logout never fails.
-pub async fn logout(db: &PgPool, user_id: Uuid, raw_token: &str) -> Result<(), AppError> {
-    let token_hash = hash_refresh_token(raw_token);
-    if let Some(row) = repo::find_by_hash(db, &token_hash).await?
-        && row.user_id == user_id
-    {
-        repo::revoke(db, row.id).await?;
-    }
-    Ok(())
+/// Revoke one refresh token. Possession of the (256-bit, unguessable) token
+/// is the proof of ownership — the same trust model `refresh` uses — so no
+/// access token is required and an idle device can always end its session.
+/// Idempotent: unknown or already-revoked tokens are silently ignored so
+/// logout never fails.
+pub async fn logout(db: &PgPool, raw_token: &str) -> Result<(), AppError> {
+    repo::revoke_by_hash(db, &hash_refresh_token(raw_token)).await
 }
 
-async fn issue_pair(db: &PgPool, config: &Config, user: User) -> Result<TokenPair, AppError> {
+async fn issue_pair(
+    db: impl PgExecutor<'_>,
+    config: &Config,
+    user: User,
+) -> Result<TokenPair, AppError> {
     let access_token = jwt::encode_access_token(&user, config)?;
     let (raw_refresh, refresh_hash) = generate_refresh_token();
     let expires_at = Utc::now() + Duration::days(config.refresh_token_ttl_days);
