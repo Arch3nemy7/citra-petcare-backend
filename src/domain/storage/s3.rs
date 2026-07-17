@@ -18,7 +18,7 @@ use aws_sdk_s3::config::{
 use aws_sdk_s3::presigning::PresigningConfig;
 use chrono::Utc;
 
-use super::{Presigned, Storage, StorageError};
+use super::{Presigned, Storage, StorageError, validate_key};
 use crate::config::{Config, StorageConfig};
 
 pub struct S3Storage {
@@ -78,6 +78,7 @@ impl Storage for S3Storage {
         content_type: &str,
         ttl: Duration,
     ) -> Result<Presigned, StorageError> {
+        validate_key(key)?;
         let presigned = self
             .client
             .put_object()
@@ -91,6 +92,7 @@ impl Storage for S3Storage {
     }
 
     async fn presign_download(&self, key: &str, ttl: Duration) -> Result<Presigned, StorageError> {
+        validate_key(key)?;
         let presigned = self
             .client
             .get_object()

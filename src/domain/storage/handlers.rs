@@ -107,24 +107,47 @@ pub async fn presign_download(
 
 /// `uploads/YYYY/MM/{uuidv7}-{sanitized-name}` — unique, sortable, readable.
 fn generate_key(file_name: &str) -> String {
-    let sanitized: String = file_name
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
-                c
-            } else {
-                '-'
-            }
-        })
-        .take(80)
-        .collect();
+    let mut sanitized = String::with_capacity(80);
+    for c in file_name.to_lowercase().chars() {
+        let mapped = if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+            c
+        } else {
+            '-'
+        };
+        // Never emit "..": generated keys must satisfy validate_key(), which
+        // rejects any "..". Consecutive dots in the original name (double
+        // extensions, "scan..final.jpg") collapse to a single dot.
+        if mapped == '.' && sanitized.ends_with('.') {
+            continue;
+        }
+        sanitized.push(mapped);
+        if sanitized.len() >= 80 {
+            break;
+        }
+    }
     format!(
         "uploads/{}/{}-{}",
         Utc::now().format("%Y/%m"),
         Uuid::now_v7(),
         sanitized
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_key;
+    use crate::domain::storage::validate_key;
+
+    #[test]
+    fn generated_keys_always_pass_validation() {
+        // Consecutive dots (double extensions, "scan..final.jpg") must not
+        // produce a key that validate_key rejects as path traversal.
+        for name in ["scan..final.jpg", "....", "a..b..c.pdf", "ünïcode.png", "/etc/passwd"] {
+            let key = generate_key(name);
+            assert!(!key.contains(".."), "key must not contain '..': {key}");
+            assert!(validate_key(&key).is_ok(), "generated key must validate: {key}");
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
