@@ -16,6 +16,16 @@ use crate::domain::vaccinations::models::Vaccination;
 use crate::domain::visits::models::{AttachmentKind, Visit, VisitAttachment, VisitType};
 use crate::error::AppError;
 
+/// The database wall clock. Used as the next-pull cursor so it is measured on
+/// the same clock as `updated_at` (set by the `set_updated_at` trigger via
+/// `now()`); reading it from the application clock would let clock skew between
+/// the API host and Postgres silently drop rows from the change feed.
+pub async fn server_time(db: &PgPool) -> Result<DateTime<Utc>, AppError> {
+    Ok(sqlx::query_scalar!(r#"SELECT now() AS "now!""#)
+        .fetch_one(db)
+        .await?)
+}
+
 pub async fn owners_changed(db: &PgPool, since: DateTime<Utc>) -> Result<Vec<Owner>, AppError> {
     Ok(sqlx::query_as!(
         Owner,

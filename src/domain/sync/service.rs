@@ -9,9 +9,10 @@ use crate::error::AppError;
 ///
 /// The queries run sequentially: at clinic scale each is a fast indexed range
 /// scan, and sequential code stays easy to follow. `server_time` is captured
-/// first so a row updated mid-pull is re-sent next pull instead of lost.
+/// first — and from the database clock, matching the clock that stamps
+/// `updated_at` — so a row updated mid-pull is re-sent next pull instead of lost.
 pub async fn changes(db: &PgPool, since: DateTime<Utc>) -> Result<ChangesResponse, AppError> {
-    let server_time = Utc::now();
+    let server_time = repo::server_time(db).await?;
 
     Ok(ChangesResponse {
         since,
