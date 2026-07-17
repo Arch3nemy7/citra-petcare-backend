@@ -46,8 +46,15 @@ pub async fn create_and_dispatch(
 
     match notifier.send(&message).await {
         Ok(()) => {
-            repo::mark_sent(db, notification.id).await?;
-            tracing::info!(id = %notification.id, driver = notifier.name(), r#type = notif_type, "notification sent");
+            // Best-effort, matching this function's doctrine that the row is the
+            // source of truth: a failed `mark_sent` must not propagate and abort
+            // the caller (the daily scheduler dispatches several categories in
+            // sequence — one transient DB hiccup here should not drop the rest).
+            if let Err(error) = repo::mark_sent(db, notification.id).await {
+                tracing::warn!(id = %notification.id, %error, "failed to record sent_at after successful push");
+            } else {
+                tracing::info!(id = %notification.id, driver = notifier.name(), r#type = notif_type, "notification sent");
+            }
         }
         Err(error) => {
             tracing::warn!(id = %notification.id, driver = notifier.name(), %error, "notification push failed; row persisted");
