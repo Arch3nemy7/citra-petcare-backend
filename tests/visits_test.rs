@@ -120,3 +120,70 @@ async fn unknown_visit_type_is_rejected() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn consent_attachment_is_rejected_on_a_non_procedure_visit() {
+    let (app, token) = spawn_logged_in().await;
+    let owner_id = create_owner(&app.router, &token, "Rina").await;
+    let patient_id = create_patient(&app.router, &token, owner_id, "Coco").await;
+
+    let (_, me) = request(&app.router, "GET", "/api/v1/users/me", Some(&token), None).await;
+    let vet_id = me["id"].as_str().unwrap();
+
+    // a PERIKSA visit does not involve a consented procedure
+    let (status, body) = request(
+        &app.router,
+        "POST",
+        "/api/v1/visits",
+        Some(&token),
+        Some(json!({
+            "patientId": patient_id,
+            "vetId": vet_id,
+            "visitType": "PERIKSA",
+            "visitDate": chrono::Utc::now(),
+            "complaint": "Kontrol rutin",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let visit_id = body["id"].as_str().unwrap().to_string();
+
+    // attaching the owner's letter of approval to it makes no sense → 422
+    let (status, _) = request(
+        &app.router,
+        "POST",
+        &format!("/api/v1/visits/{visit_id}/attachments"),
+        Some(&token),
+        Some(json!({ "fileKey": "visits/consent-2.jpg", "kind": "CONSENT" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // a plain PHOTO on the same visit is still fine
+    let (status, _) = request(
+        &app.router,
+        "POST",
+        &format!("/api/v1/visits/{visit_id}/attachments"),
+        Some(&token),
+        Some(json!({ "fileKey": "visits/photo-1.jpg", "kind": "PHOTO" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn unknown_cursor_is_rejected() {
+    let (app, token) = spawn_logged_in().await;
+
+    // a cursor that points at no visit is a malformed request, not an empty
+    // page — otherwise a bad cursor looks like "you've reached the end".
+    let (status, _) = request(
+        &app.router,
+        "GET",
+        &format!("/api/v1/visits?cursor={}", Uuid::now_v7()),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

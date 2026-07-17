@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::dto::{AttachmentRequest, VisitRequest};
-use super::models::{Visit, VisitAttachment, VisitStockUsage};
+use super::models::{AttachmentKind, Visit, VisitAttachment, VisitStockUsage, VisitType};
 use super::repo;
 use crate::error::AppError;
 use crate::http::pagination::Paginated;
@@ -57,7 +57,16 @@ pub async fn add_attachment(
     visit_id: Uuid,
     input: &AttachmentRequest,
 ) -> Result<VisitAttachment, AppError> {
-    get(db, visit_id).await?; // 404 before a confusing FK error
+    let visit = get(db, visit_id).await?; // 404 before a confusing FK error
+    // A CONSENT attachment is the owner's signed approval for a procedure, so
+    // it only belongs on the visit types that involve one.
+    if input.kind == AttachmentKind::Consent
+        && !matches!(visit.visit_type, VisitType::Sterilisasi | VisitType::Opname)
+    {
+        return Err(AppError::Unprocessable(
+            "CONSENT attachments are only allowed on STERILISASI or OPNAME visits".into(),
+        ));
+    }
     let id = input.id.unwrap_or_else(Uuid::now_v7);
     repo::insert_attachment(db, id, visit_id, &input.file_key, input.kind).await
 }
