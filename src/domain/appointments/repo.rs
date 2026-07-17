@@ -18,6 +18,22 @@ pub async fn list(
     cursor: Option<Uuid>,
     limit: i64,
 ) -> Result<Vec<Appointment>, AppError> {
+    // A cursor must resolve to a real appointment: an unknown id makes the
+    // keyset subquery yield NULL, and `(scheduled_at, id) > NULL` is NULL for
+    // every row, silently returning an empty page as if there were nothing
+    // more. Existence ignores soft-delete so a boundary row tombstoned between
+    // pages still anchors the next page (matching the subquery, which does not
+    // filter deleted_at).
+    if let Some(cursor) = cursor {
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM appointments WHERE id = $1)")
+                .bind(cursor)
+                .fetch_one(db)
+                .await?;
+        if !exists {
+            return Err(AppError::BadRequest("unknown cursor".into()));
+        }
+    }
     let rows = sqlx::query_as!(
         Appointment,
         r#"
